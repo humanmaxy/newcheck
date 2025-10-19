@@ -1,6 +1,7 @@
 #include "pch.h"
 #include"yololayer.h"
 #include"yolov5_d.h"
+#include "plugin_init.h"  // Add plugin initialization header
 #include <corecrt_io.h>
 #include <mutex>
 #include <tchar.h> // 解决debug下的报错
@@ -528,6 +529,12 @@ bool Detection_J::Initialize(int cameraType, const char* model_path, const char*
 
 
 	// prepare input data ------NCHW---------------------
+	// Initialize YoloLayer plugin before creating runtime
+	if (!initializeYoloPlugin()) {
+		spdlog::get("CATL_WCP")->error("Failed to initialize YoloLayer plugin!");
+		return false;
+	}
+	
 	runtime = createInferRuntime(gLogger);
 	assert(runtime != nullptr);
 	engine = runtime->deserializeCudaEngine(trtModelStream, size);
