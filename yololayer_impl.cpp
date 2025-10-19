@@ -1,5 +1,6 @@
 // Plugin implementation file - separate from header to avoid DLL import/export issues
 #include "yololayer.h"
+#include <NvInferRuntime.h>  // For getPluginRegistry
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -266,7 +267,13 @@ extern "C" {
     {
         if (!g_yoloPluginCreator) {
             g_yoloPluginCreator = new nvinfer1::YoloPluginCreator();
-            nvinfer1::getPluginRegistry()->registerCreator(*g_yoloPluginCreator, libNamespace ? libNamespace : "");
+            // Get the plugin registry
+            auto* registry = getPluginRegistry();
+            if (registry) {
+                registry->registerCreator(*g_yoloPluginCreator, libNamespace ? libNamespace : "");
+            } else {
+                return false;  // Failed to get plugin registry
+            }
         }
         return true;
     }
