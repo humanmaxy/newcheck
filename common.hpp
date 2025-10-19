@@ -285,7 +285,7 @@ inline ILayer* Proto(INetworkDefinition* network, std::map<std::string, Weights>
 
     auto upsample = network->addResize(*cv1->getOutput(0));
     assert(upsample);
-    upsample->setResizeMode(ResizeMode::kNEAREST);
+    upsample->setResizeMode(InterpolationMode::kNEAREST);
     const float scales[] = {1, 2, 2};
     upsample->setScales(scales, 3);
 
