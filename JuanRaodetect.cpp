@@ -482,7 +482,7 @@ DLL_API AI_Params CATL_JUANRAO::GetParamInfo()
 }
 
 // 获取版本信息
-DLL_API std::string CATL_JUANRAO::GetVervionInfo()
+std::string CATL_JUANRAO::GetVervionInfo()
 {
     std::string version = ai_version;
     return version;

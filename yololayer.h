@@ -3,7 +3,12 @@
 
 #include <vector>
 #include <string>
+#pragma warning(push)
+#pragma warning(disable: 4819)  // Disable Unicode encoding warning
+#pragma warning(disable: 4251)  // STL containers need DLL interface
+#pragma warning(disable: 4275)  // Non-DLL interface base class
 #include <NvInfer.h>
+#pragma warning(pop)
 #include "macros.h"
 
 namespace Yolo
@@ -33,7 +38,7 @@ namespace Yolo
 
 namespace nvinfer1
 {
-    class API YoloLayerPlugin : public IPluginV2IOExt
+    class YoloLayerPlugin : public IPluginV2IOExt
     {
     public:
         YoloLayerPlugin(int classCount, int netWidth, int netHeight, int maxOut, bool is_segmentation, const std::vector<Yolo::YoloKernel>& vYoloKernel);
@@ -102,7 +107,7 @@ namespace nvinfer1
         void** mAnchor;
     };
 
-    class API YoloPluginCreator : public IPluginCreator
+    class YoloPluginCreator : public IPluginCreator
     {
     public:
         YoloPluginCreator();
