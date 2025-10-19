@@ -1,6 +1,6 @@
 #include <iostream>
-#include "yololayer.h"
 #include "plugin_init.h"
+#include "yololayer.h"
 #include <NvInfer.h>
 
 int main() {

@@ -1,3 +1,4 @@
+// Plugin implementation file - separate from header to avoid DLL import/export issues
 #include "yololayer.h"
 #include <cassert>
 #include <cstring>
@@ -5,12 +6,12 @@
 
 using namespace nvinfer1;
 
+// Static member definitions (must be outside namespace and without API decorations)
+PluginFieldCollection nvinfer1::YoloPluginCreator::mFC{};
+std::vector<PluginField> nvinfer1::YoloPluginCreator::mPluginAttributes;
+
 namespace nvinfer1
 {
-    // Static member definitions for YoloPluginCreator
-    PluginFieldCollection YoloPluginCreator::mFC{};
-    std::vector<PluginField> YoloPluginCreator::mPluginAttributes;
-
     // YoloLayerPlugin implementation
     YoloLayerPlugin::YoloLayerPlugin(int classCount, int netWidth, int netHeight, int maxOut, bool is_segmentation, const std::vector<Yolo::YoloKernel>& vYoloKernel)
         : mClassCount(classCount), mYoloV5NetWidth(netWidth), mYoloV5NetHeight(netHeight), mMaxOutObject(maxOut), is_segmentation_(is_segmentation), mYoloKernel(vYoloKernel)
@@ -254,19 +255,19 @@ namespace nvinfer1
         obj->setPluginNamespace(mNamespace.c_str());
         return obj;
     }
+}
 
-    // Safe plugin registration - avoid global static initialization issues
-    static YoloPluginCreator* g_yoloPluginCreator = nullptr;
+// Safe plugin registration - avoid global static initialization issues
+static nvinfer1::YoloPluginCreator* g_yoloPluginCreator = nullptr;
 
-    extern "C" {
-        // This function will be called to initialize the plugin
-        bool initLibNvInferPlugins(void* logger, const char* libNamespace)
-        {
-            if (!g_yoloPluginCreator) {
-                g_yoloPluginCreator = new YoloPluginCreator();
-                getPluginRegistry()->registerCreator(*g_yoloPluginCreator, libNamespace ? libNamespace : "");
-            }
-            return true;
+extern "C" {
+    // This function will be called to initialize the plugin
+    bool initLibNvInferPlugins(void* logger, const char* libNamespace)
+    {
+        if (!g_yoloPluginCreator) {
+            g_yoloPluginCreator = new nvinfer1::YoloPluginCreator();
+            nvinfer1::getPluginRegistry()->registerCreator(*g_yoloPluginCreator, libNamespace ? libNamespace : "");
         }
+        return true;
     }
 }

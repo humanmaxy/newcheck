@@ -102,7 +102,7 @@ namespace nvinfer1
         void** mAnchor;
     };
 
-    class API YoloPluginCreator : public IPluginCreator
+    class YoloPluginCreator : public IPluginCreator
     {
     public:
         YoloPluginCreator();

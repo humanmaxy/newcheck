@@ -10,8 +10,15 @@
     #else
         #define API __declspec(dllimport)
     #endif
+    // For plugin creators, we need special handling
+    #ifdef BUILDING_PLUGIN_LIB
+        #define PLUGIN_API __declspec(dllexport)
+    #else
+        #define PLUGIN_API
+    #endif
 #else
     #define API
+    #define PLUGIN_API
 #endif
 
 // Safe plugin registration macro that avoids access violations
