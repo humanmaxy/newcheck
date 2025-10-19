@@ -6,7 +6,10 @@
 #include <sstream>
 #include <vector>
 #include <opencv2/opencv.hpp>
+#pragma warning(push)
+#pragma warning(disable: 4819)  // Disable Unicode encoding warning
 #include "NvInfer.h"
+#pragma warning(pop)
 #include "yololayer.h"
 
 using namespace nvinfer1;

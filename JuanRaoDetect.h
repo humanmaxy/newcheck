@@ -10,10 +10,12 @@
 
 namespace CATL_JUANRAO
 {
-#ifdef DLL_API
-#define DLL_API extern "C" __declspec(dllexport)
-#else
-#define DLL_API extern "C" __declspec(dllimport)
+#ifndef DLL_API
+    #ifdef CATL_JUANRAO_EXPORTS
+        #define DLL_API extern "C" __declspec(dllexport)
+    #else
+        #define DLL_API extern "C" __declspec(dllimport)
+    #endif
 #endif 
 
     /************************************************************************************************************************
@@ -50,7 +52,7 @@ namespace CATL_JUANRAO
         *
         * Data:        2024.3.11
         *************************************************************************************************************************/
-    DLL_API std::string GetVervionInfo();
+    std::string GetVervionInfo();
 
 
     /************************************************************************************************************************
