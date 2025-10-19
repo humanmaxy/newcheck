@@ -308,19 +308,7 @@ inline std::vector<std::vector<float>> getAnchors(std::map<std::string, Weights>
 }
 
 inline IPluginV2Layer* addYoLoLayer(INetworkDefinition *network, std::map<std::string, Weights>& weightMap, std::string lname, std::vector<IConvolutionLayer*> dets, bool is_segmentation = false) {
-    // 安全获取插件注册表和创建器
-    auto registry = getPluginRegistry();
-    if (registry == nullptr) {
-        std::cerr << "错误: 无法获取插件注册表" << std::endl;
-        return nullptr;
-    }
-    
-    auto creator = registry->getPluginCreator("YoloLayer_TRT", "1");
-    if (creator == nullptr) {
-        std::cerr << "错误: 无法找到 YoloLayer_TRT 插件创建器" << std::endl;
-        return nullptr;
-    }
-    
+    auto creator = getPluginRegistry()->getPluginCreator("YoloLayer_TRT", "1");
     auto anchors = getAnchors(weightMap, lname);
     PluginField plugin_fields[2];
     int netinfo[5] = {Yolo::CLASS_NUM, Yolo::INPUT_W, Yolo::INPUT_H, Yolo::MAX_OUTPUT_BBOX_COUNT, (int)is_segmentation};
@@ -350,24 +338,12 @@ inline IPluginV2Layer* addYoLoLayer(INetworkDefinition *network, std::map<std::s
     PluginFieldCollection plugin_data;
     plugin_data.nbFields = 2;
     plugin_data.fields = plugin_fields;
-    
     IPluginV2 *plugin_obj = creator->createPlugin("yololayer", &plugin_data);
-    if (plugin_obj == nullptr) {
-        std::cerr << "错误: 无法创建 YOLO 插件对象" << std::endl;
-        return nullptr;
-    }
-    
     std::vector<ITensor*> input_tensors;
     for (auto det: dets) {
         input_tensors.push_back(det->getOutput(0));
     }
-    
     auto yolo = network->addPluginV2(&input_tensors[0], input_tensors.size(), *plugin_obj);
-    if (yolo == nullptr) {
-        std::cerr << "错误: 无法添加 YOLO 层到网络" << std::endl;
-        return nullptr;
-    }
-    
     return yolo;
 }
 #endif  // YOLOV5_COMMON_H_
