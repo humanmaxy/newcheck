@@ -1,12 +1,29 @@
-#include "pch.h"
-#include"yololayer.h"
 #include"yolov5_d.h"
+#include"yololayer.h"
+#include"cuda_utils.h"
+#include"logging.h"
+#include"utils.h"
+#include"calibrator.h"
+#include"m_logger.h"
+
+#include <opencv2/dnn.hpp>
+#include <opencv2/imgproc.hpp>
+#include <string.h>
+#include <fstream>
+#include <sstream>
+#include <chrono>
 #include <corecrt_io.h>
 #include <mutex>
-#include <tchar.h> // 解决debug下的报错
-
-//////////2025-04-27 切拉换型联调//////////
 #include <cstdlib>
+
+// Third-party logging
+#include <spdlog/spdlog.h>
+
+#ifdef _WIN32
+#include <tchar.h>
+#include <windows.h>
+#include <direct.h>
+#endif
 
 
 //////////2025-05-16 中州拐角胶过杀//////////

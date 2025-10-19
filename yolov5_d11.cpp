@@ -1,9 +1,29 @@
-#include "pch.h"
-#include"yololayer.h"
 #include"yolov5_d.h"
+#include"yololayer.h"
+#include"cuda_utils.h"
+#include"logging.h"
+#include"utils.h"
+#include"calibrator.h"
+#include"m_logger.h"
+
+#include <opencv2/dnn.hpp>
+#include <opencv2/imgproc.hpp>
+#include <string.h>
+#include <fstream>
+#include <sstream>
+#include <chrono>
 #include <corecrt_io.h>
 #include <mutex>
-#include <tchar.h> // 解决debug下的报错
+#include <cstdlib>
+
+// Third-party logging
+#include <spdlog/spdlog.h>
+
+#ifdef _WIN32
+#include <tchar.h>
+#include <windows.h>
+#include <direct.h>
+#endif
 //static const int INPUT_H = Yolo::INPUT_H;
 //static const int INPUT_W = Yolo::INPUT_W;
 //static const int OUTPUT_SIZE = Yolo::MAX_OUTPUT_BBOX_COUNT * sizeof(Yolo::Detection) / sizeof(float) + 1;  // we assume the yololayer outputs no more than MAX_OUTPUT_BBOX_COUNT boxes that conf >= 0.1

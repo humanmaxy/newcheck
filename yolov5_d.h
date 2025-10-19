@@ -2,27 +2,30 @@
 #define YOLOV5_D_H
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/dnn.hpp>
-#include <opencv2/imgproc.hpp>
-#include <string.h>
 #include <vector>
-#include <fstream>
-#include <sstream>
+#include <string>
+#include <map>
 #include <iostream>
-#include "yololayer.h"
-#include <chrono>
-#include "cuda_utils.h"
-#include "logging.h"
-#include "common.hpp"
-#include "utils.h"
-#include "calibrator.h"
-#include "CommonData.h"
-#include "m_logger.h"
-#include <windows.h>
-#include <direct.h>
 #include <NvInfer.h>
 #include <cuda_runtime.h>
 #include <NvInferRuntime.h>
+
+// Forward declarations to reduce include dependencies
+namespace Yolo {
+    static constexpr int INPUT_H = 640;
+    static constexpr int INPUT_W = 640;
+    static constexpr int CLASS_NUM = 80;
+    static constexpr int MAX_OUTPUT_BBOX_COUNT = 1000;
+    
+    struct Detection {
+        float bbox[4];
+        float conf;
+        float class_id;
+    };
+}
+
+// Include only essential headers
+#include "CommonData.h"
 //#define USE_FP16  // 设置推理精度
 //#define DEVICE 0  // GPU id
 //#define NMS_THRESH 0.1
