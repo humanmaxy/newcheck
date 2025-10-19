@@ -4,28 +4,12 @@
 #include <corecrt_io.h>
 #include <mutex>
 #include <tchar.h> // 解决debug下的报错
-
-//////////2025-04-27 切拉换型联调//////////
-#include <cstdlib>
-
-
-//////////2025-05-16 中州拐角胶过杀//////////
-#include <opencv2/opencv.hpp>
-#include <iostream>
-#include <string>
-#include <cstdlib>
-#include <thread>
-#include <fstream>
-#include <filesystem>
-
-
 //static const int INPUT_H = Yolo::INPUT_H;
 //static const int INPUT_W = Yolo::INPUT_W;
 //static const int OUTPUT_SIZE = Yolo::MAX_OUTPUT_BBOX_COUNT * sizeof(Yolo::Detection) / sizeof(float) + 1;  // we assume the yololayer outputs no more than MAX_OUTPUT_BBOX_COUNT boxes that conf >= 0.1
 //const char* INPUT_BLOB_NAME = "images";
 //const char* OUTPUT_BLOB_NAME = "output0";
 //static Logger gLogger;
-
 
 using namespace std;
 const char* INPUT_BLOB_NAME = "images";
@@ -58,16 +42,6 @@ bool Detection_J::ReadParams(const std::string& file_path)
 	calibration = ::GetPrivateProfileInt(_T("base"), _T("calibration"), 0.062, path);
 	loujinshu = ::GetPrivateProfileInt(_T("base"), _T("loujinshu"), 0.5, path);
 	area_loujinshu = ::GetPrivateProfileInt(_T("base"), _T("loujinshu_area"), 6, path);
-
-
-	////////////开放气泡卡控参数///////////
-	qp_c = ::GetPrivateProfileInt(_T("base"), _T("qp_c"), 4, path);
-	qp_k = ::GetPrivateProfileInt(_T("base"), _T("qp_k"), 4, path);
-	qp_c_calibration = ::GetPrivateProfileInt(_T("base"), _T("qp_c_calibration"), 0.09, path);
-	qp_k_calibration = ::GetPrivateProfileInt(_T("base"), _T("qp_k_calibration"), 0.05, path);
-
-
-
 	return true;
 }
 
@@ -140,15 +114,12 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	IConvolutionLayer* det2 = network->addConvolutionNd(*bottleneck_csp23->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.24.m.2.weight"], weightMap["model.24.m.2.bias"]);
 
 	auto yolo = addYoLoLayer(network, weightMap, "model.24", std::vector<IConvolutionLayer*>{det0, det1, det2});
-	if (yolo == nullptr) {
-		std::cerr << "错误: 无法创建 YOLO 层" << std::endl;
-		return nullptr;
-	}
 	yolo->getOutput(0)->setName(OUTPUT_BLOB_NAME);
 	network->markOutput(*yolo->getOutput(0));
 	// Build engine
-	// Note: setMaxBatchSize is deprecated in TensorRT 10.x
-	config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, 16 * (1 << 20));  // 16MB
+	//builder->setMaxBatchSize(maxBatchSize);
+	//config->setMaxWorkspaceSize(16 * (1 << 20));  // 16MB
+	config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, 16 * (1 << 20));
 #if defined(USE_FP16)
 	config->setFlag(BuilderFlag::kFP16);
 #elif defined(USE_INT8)
@@ -164,7 +135,7 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	std::cout << "Build engine successfully!" << std::endl;
 
 	// Don't need the network any more
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
+	//network->destroy();
 
 	// Release host memory
 	for (auto& mem : weightMap)
@@ -247,16 +218,13 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	IConvolutionLayer* det3 = network->addConvolutionNd(*c3_32->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.33.m.3.weight"], weightMap["model.33.m.3.bias"]);
 
 	auto yolo = addYoLoLayer(network, weightMap, "model.33", std::vector<IConvolutionLayer*>{det0, det1, det2, det3});
-	if (yolo == nullptr) {
-		std::cerr << "错误: 无法创建 YOLO 层" << std::endl;
-		return nullptr;
-	}
 	yolo->getOutput(0)->setName(OUTPUT_BLOB_NAME);
 	network->markOutput(*yolo->getOutput(0));
 
 	// Build engine
-	// Note: setMaxBatchSize is deprecated in TensorRT 10.x
-	config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, 16 * (1 << 20));  // 16MB
+	//builder->setMaxBatchSize(maxBatchSize);
+	//config->setMaxWorkspaceSize(16 * (1 << 20));  // 16MB
+	config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, 16 * (1 << 20));
 #if defined(USE_FP16)
 	config->setFlag(BuilderFlag::kFP16);
 #elif defined(USE_INT8)
@@ -272,7 +240,7 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	std::cout << "Build engine successfully!" << std::endl;
 
 	// Don't need the network any more
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
+	//network->destroy();
 
 	// Release host memory
 	for (auto& mem : weightMap)
@@ -302,22 +270,19 @@ void APIToModel(unsigned int maxBatchSize, IHostMemory** modelStream, bool& is_p
 	(*modelStream) = engine->serialize();
 
 	// Close everything down
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
+	//engine->destroy();
+	//config->destroy();
+	//builder->destroy();
 
 }
 
 void doInference(IExecutionContext& context, cudaStream_t& stream, void** buffers, float* input, float* output, int batchSize) {
 	// DMA input batch data to device, infer on the batch asynchronously, and DMA output back to host
 	CUDA_CHECK(cudaMemcpyAsync(buffers[0], input, batchSize * 3 * INPUT_H * INPUT_W * sizeof(float), cudaMemcpyHostToDevice, stream));
-	
-	// In TensorRT 10.x, enqueueV2 is replaced with enqueueV3
-	// For now, using a compatibility approach - this may need further adjustment based on your specific TensorRT 10.x version
+	//context.enqueueV2(buffers, stream, nullptr);
 	context.setTensorAddress(INPUT_BLOB_NAME, buffers[0]);
 	context.setTensorAddress(OUTPUT_BLOB_NAME, buffers[1]);
 	context.enqueueV3(stream);
-	
 	CUDA_CHECK(cudaMemcpyAsync(output, buffers[1], batchSize * OUTPUT_SIZE * sizeof(float), cudaMemcpyDeviceToHost, stream));
 	cudaStreamSynchronize(stream);
 }
@@ -486,53 +451,7 @@ void calculate_contrast(const cv::Mat& defect_img, int thresh, int& defect_area,
 //	cudaStreamSynchronize(stream);
 //}
 
-
-//////////2025-04-27 切拉换型联调//////////
-// 根据输入的模型格式（使用后缀判断）进行模型转换，输出.engine格式的模型路径
-std::string convert_model(std::string model_path ,int tape_flag)
-{
-	std::string suffix = model_path.substr(model_path.find_last_of('.'));
-	std::string front_part = model_path.substr(0, model_path.find_last_of('.'));
-	std::string engine_path;
-	/*if (tape_flag==0 && suffix == ".wts" && front_part =="wcp_det")
-	{
-		std::string command = "yolov5_17.exe -s " + model_path + " " + front_part + ".engine s";
-		std::cout << "command: " << command << std::endl;
-		system(command.c_str());
-		engine_path = front_part + ".engine";
-	}*/
-	if (tape_flag ==1 && suffix == ".wts" && front_part == "AI_Config/model/wcp_det_jiaozhi")
-	{
-		std::string command = "yolov5_2.exe -s " + model_path + " " + front_part + ".engine s";
-		std::cout << "command: " << command << std::endl;
-		system(command.c_str());
-		engine_path = front_part + ".engine";
-	}
-	/*else if (tape_flag == 2 && suffix == ".wts" && front_part == "wcp_det_guaijiao")
-	{
-		std::string command = "yolov5_1.exe -s " + model_path + " " + front_part + ".engine s";
-		std::cout << "command: " << command << std::endl;
-		system(command.c_str());
-		engine_path = front_part + ".engine";
-	}*/
-	else if (suffix == ".engine" )
-	{
-		std::cout << "current model path: " << model_path << std::endl;
-		engine_path = model_path;
-	}
-	else
-	{
-		std::cerr << "not supported model format: " << model_path << std::endl;
-		exit(-1);
-	}
-	return engine_path;
-}
-
-
-
-//////////2025-04-27 切拉换型联调//////////
-bool Detection_J::Initialize(int cameraType, const char* model_path, const char* config_path, int num)
-//bool Detection_J::Initialize(int cameraType, const char* model_path, const char* config_path, int num ,int tape_flag)
+bool Detection_J::Initialize(int cameraType, const char* model_path, const char* config_path,  int num)
 {
 	camType = cameraType;
 	if (num < 0 || num>3) {
@@ -546,27 +465,9 @@ bool Detection_J::Initialize(int cameraType, const char* model_path, const char*
 	this->gd = yolo_nets[num].gd;
 	this->gw = yolo_nets[num].gw;
 
-	//////////2025-04-27 切拉换型联调//////////
-
-//	//初始化GPU引擎
-//	cudaSetDevice(DEVICE);
-////d:123/xxx.wts
-////d:123/xxx.engine
-//
-//	// .wts-->.engine
-//	// std::string engine_path = wts2engine(model_path)
-
+	//初始化GPU引擎
+	cudaSetDevice(DEVICE);
 	std::ifstream file(model_path, std::ios::binary);
-	// std::ifstream file(engine_path, std::ios::binary);
-
-	////初始化GPU引擎
-	//cudaSetDevice(DEVICE);
-
-	//// 读模型前进行格式判断，如果是非engine格式则进行模型转换
-	//std::string engine_path = convert_model(std::string(model_path),tape_flag);
-	//std::ifstream file(engine_path.c_str(), std::ios::binary);
-
-
 	if (!file.good()) {
 		spdlog::get("CATL_WCP")->info("read mode file error!");
 		//LogWriterFlush("read mode file error!");
@@ -639,12 +540,13 @@ bool Detection_J::Initialize(int cameraType, const char* model_path, const char*
 	context = engine->createExecutionContext();
 	assert(context != nullptr);
 	delete[] trtModelStream;
-	// Note: In TensorRT 10.x, binding indices are replaced with tensor names
-	// assert(engine->getNbBindings() == 2);
-	// inputIndex = engine->getBindingIndex(INPUT_BLOB_NAME);
-	// outputIndex = engine->getBindingIndex(OUTPUT_BLOB_NAME);
+	//assert(engine->getNbBindings() == 2);
+	//inputIndex = engine->getBindingIndex(INPUT_BLOB_NAME);
+	//outputIndex = engine->getBindingIndex(OUTPUT_BLOB_NAME);
+	//assert(inputIndex == 0);
+	//assert(outputIndex == 1);
 	inputIndex = 0;  // Assuming input is at index 0
-	outputIndex = 1; // Assuming output is at index 1
+	outputIndex = 1;
 	// Create GPU buffers on device
 	CUDA_CHECK(cudaMalloc(&buffers[inputIndex], BATCH_SIZE * 3 * INPUT_H * INPUT_W * sizeof(float)));
 	CUDA_CHECK(cudaMalloc(&buffers[outputIndex], BATCH_SIZE * OUTPUT_SIZE * sizeof(float)));
@@ -805,8 +707,6 @@ void DetectBubble(cv::Mat& srcImg, std::vector<DefectData>& defect_data, int img
 	qp_width_min = m_defect_thresh_map["qp_width_min"] / calib;
 	qp_height_min = m_defect_thresh_map["qp_height_min"] / calib;
 	area_dazhou_min = m_defect_thresh_map["area_dazhou_min"] / calib / calib;
-
-
 	try
 	{
 		//
@@ -1206,15 +1106,6 @@ void DetectDaZhou(cv::Mat& srcImg, std::vector<DefectData>& defect_data, int img
 	float dazhou_x_caiqie = 60;
 	float calib = 0.05;
 
-
-	//////////坐标偏移参数//////////
-	int up_offset = 0;
-	int down_offset = 0;
-
-
-	///////////////////////////灰度差//////////////////
-	float threshold_gray_difference = 50;
-
 	if (m_defect_thresh_map.find("dazhou_use_autothre") != m_defect_thresh_map.end())
 		dazhou_use_autothre = m_defect_thresh_map["dazhou_use_autothre"];
 	if(m_defect_thresh_map.find("dazhou_thre_min") != m_defect_thresh_map.end())
@@ -1242,16 +1133,6 @@ void DetectDaZhou(cv::Mat& srcImg, std::vector<DefectData>& defect_data, int img
 	qp_width_min = m_defect_thresh_map["qp_width_min"] / calib;
 	qp_height_min = m_defect_thresh_map["qp_height_min"] / calib;
 	area_dazhou_min = m_defect_thresh_map["area_dazhou_min"] / calib / calib;
-
-
-	//////////坐标偏移//////////
-	up_offset = m_defect_thresh_map["up_offset"] ;
-	down_offset = m_defect_thresh_map["down_offset"];
-
-
-	///////////////////////////灰度差//////////////////
-	threshold_gray_difference = m_defect_thresh_map["threshold_gray_difference"];
-
 	try
 	{
 		//
@@ -1259,10 +1140,6 @@ void DetectDaZhou(cv::Mat& srcImg, std::vector<DefectData>& defect_data, int img
 		std::vector<cv::Point> pointsUp;
 		std::vector<cv::Point> pointsDown;
 		int x_min=999999, x_max=0, y_min=999999, y_max=0;
-		XYdataUp[2].second += up_offset;
-		XYdataUp[3].second += up_offset;
-		XYdataDown[2].second += down_offset;
-		XYdataDown[3].second += down_offset;
 		for (int i = 0; i < XYdataUp.size(); i++)
 		{
 			if (XYdataUp[i].first < x_min)
@@ -1300,8 +1177,6 @@ void DetectDaZhou(cv::Mat& srcImg, std::vector<DefectData>& defect_data, int img
 
 		x_min += dazhou_x_caiqie;
 		x_max -= dazhou_x_caiqie;
-
-		
 
 		for (int j = 0; j < 2; j++)
 		{
@@ -1593,7 +1468,6 @@ void DetectDaZhou(cv::Mat& srcImg, std::vector<DefectData>& defect_data, int img
 				double gray_m = graymean[0];
 
 
-
 				float dZuo = 0, dYou = 0;
 				dZuo = abs(r2.x + _x + x_min - x_min);
 				dYou = abs(x_max - (r2.x + _x + x_min));
@@ -1614,33 +1488,6 @@ void DetectDaZhou(cv::Mat& srcImg, std::vector<DefectData>& defect_data, int img
 					dWai = pointToLineDistance(XYdataUp[0].first, XYdataUp[0].second, XYdataUp[1].first, XYdataUp[1].second, r2.x + _x + x_min, r2.y + _y + y_min);
 					dNei = pointToLineDistance(XYdataUp[3].first, XYdataUp[3].second, XYdataUp[2].first, XYdataUp[2].second, r2.x + _x + x_min, r2.y + r2.height + _y + y_min);
 				}
-
-
-
-				///////////临时---------当长轴大于1000时过滤////////////
-				if (cz > 1000)
-				{
-					spdlog::get("CATL_WCP")->info("defect_name:" + temp_defect_qipao.defect_name + ", 长轴像素:" + std::to_string(cz) + " > 阈值 : " + std::to_string(1000) + ", 被过滤");
-					continue;
-				}
-
-
-				///////////临时---------与周围灰度值近似的过滤/////////
-				cv::Scalar graymean_defect = cv::mean(defect_gray, defect);
-				double gray_m_defect = graymean_defect[0];
-				cv::Mat surrounding_area = cv::Mat::ones(defect_gray.size(), defect_gray.type()) * 255;
-				cv::rectangle(surrounding_area, r2.tl(), r2.br(), cv::Scalar(0), -1);
-				cv::Mat mask = surrounding_area == 255;
-				cv::Scalar graymean_surrounding = cv::mean(defect_gray, mask);
-				double gray_m_surrounding = graymean_surrounding[0];
-
-
-				if (std::abs(gray_m_defect - gray_m_surrounding) < threshold_gray_difference)
-				{
-					spdlog::get("CATL_WCP")->info("defect_name:" + temp_defect_qipao.defect_name + ", 灰度差异小于阈值 : " + std::to_string(threshold_gray_difference) + ", 被过滤");
-					continue;
-				}
-				
 
 				//面积和灰度过滤
 				float area_mm = area * 0.078 * 0.078;
@@ -1755,11 +1602,9 @@ StatusCode Detection_J::Detecting(cv::Mat& img, std::vector<DefectData>& defect_
 	/*double res_w = img.cols / 640.00;
 	double res_h = img.rows / 640.00;*/
 	//2024/11/2 lil17 供应商传入的img_x坐标为级片边缘+10，修改为AT11边缘
-
-	//////////2025-03-14解决JC坐标框偏移//////////
-	/*cv::Rect r1 = cv::Rect(img_x - piyi, 0, img_w, img.rows - 1);
+	cv::Rect r1 = cv::Rect(img_x - piyi, 0, img_w, img.rows - 1);
 	cv::Mat srcImg;
-	img(r1).copyTo(srcImg);*/
+	img(r1).copyTo(srcImg);
 	//cv::resize(img, img, cv::Size(640, 640));
 	auto t1 = std::chrono::steady_clock::now();
 	cv::Mat loujinshu_test, loujinshu_test_bgr;
@@ -1767,12 +1612,7 @@ StatusCode Detection_J::Detecting(cv::Mat& img, std::vector<DefectData>& defect_
 	cv::Mat carch;
 	
 
-	
-	//////////2025-03-14解决JC坐标框偏移//////////
-	cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H, &ratio); //  BGR to RGB
-
-	//cv::Mat pr_img = preprocess_img(srcImg, INPUT_W, INPUT_H, &ratio); //  BGR to RGB
-
+	cv::Mat pr_img = preprocess_img(srcImg, INPUT_W, INPUT_H, &ratio); //  BGR to RGB
 	int i = 0;
 	double all_area_loujinshu = 0;
 	for (int row = 0; row < INPUT_H; ++row) {
@@ -1795,6 +1635,205 @@ StatusCode Detection_J::Detecting(cv::Mat& img, std::vector<DefectData>& defect_
 	doInference(*context, stream, buffers, data, prob, BATCH_SIZE);	
 	nms(batch_res, &prob[0], CONF_THRESH, NMS_THRESH);
 
+#pragma region MyRegion
+	/*t_cost = (static_cast<double>(cv::getTickCount()) - time1) / cv::getTickFrequency() * 1000;
+	LogWriterFlush("模型推理时间" + std::to_string(t_cost) + "ms");*/
+	//std::cout << "doinference cost(ms): " << t_cost << std::endl;
+
+
+	// time1 = static_cast<double>(cv::getTickCount());
+	//cv::Mat posunMat;
+	//std::vector<cv::Mat> BGR;
+	//cv::split(img, BGR);
+	//cv::threshold(BGR[0], posunMat, 200, 255, cv::THRESH_BINARY);
+	//cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 50));
+	//cv::morphologyEx(posunMat, posunMat, cv::MORPH_OPEN, kernel);
+	//posunMat.convertTo(posunMat, CV_8UC1);
+	//cv::Mat labels, centroids, stats, res_img;
+	//int connected_num = cv::connectedComponentsWithStats(posunMat, labels, stats, centroids);
+	//// 找出面积最大的连通域
+	//int maxAreaLabel = 0;
+	//int maxArea = 0;
+	//int x, y, w, h;
+	//for (int i = 1; i < connected_num; i++)
+	//{
+	//	int a = stats.at<int>(i, 4);
+	//	if (a > maxArea) {
+	//		maxArea = a;
+	//		maxAreaLabel = i;
+	//	}
+	//	x = stats.at<int>(maxAreaLabel, 0);
+	//	y = stats.at<int>(maxAreaLabel, 1);
+	//	w = stats.at<int>(maxAreaLabel, 2);
+	//	h = stats.at<int>(maxAreaLabel, 3);
+	//}
+	//cv::Rect boundRectAT(0, 0, 0, 0);
+	//// boundRectAT = cv::Rect(x, y, w, h);
+	//boundRectAT = cv::Rect(x + w, 0, img.cols - x - w, img.rows);
+	//cv::Mat jipianMat = img(boundRectAT);
+	//cv::split(jipianMat, BGR);
+	//cv::Mat jiance1, jiance2;
+	//cv::Mat oriMat = BGR[2];
+	//cv::Rect jiance1Rect(3, 0, 20, jipianMat.rows);
+	//cv::Rect jiance2Rect(jipianMat.cols - 25, 0, 24, jipianMat.rows);
+	//jiance1 = (BGR[2])(jiance1Rect);
+	//jiance2 = (BGR[2])(jiance2Rect);
+
+	//cv::Mat quexian1, quexian2;
+	//cv::threshold(jiance1, quexian1, 25, 255, cv::THRESH_BINARY_INV);
+	//cv::threshold(jiance2, quexian2, 20, 255, cv::THRESH_BINARY_INV);
+	//connected_num = cv::connectedComponentsWithStats(quexian1, labels, stats, centroids);
+	//std::vector<cv::Rect> posunRects1;
+	//for (int i = 1; i < connected_num; i++)
+	//{
+	//	x = stats.at<int>(i, 0);
+	//	y = stats.at<int>(i, 1);
+	//	w = stats.at<int>(i, 2);
+	//	h = stats.at<int>(i, 3);
+	//	if (h < 8 || w < 5)
+	//		continue;
+	//	posunRects1.push_back(cv::Rect(x, y, w, h));
+	//}
+	///*for (size_t i = 0; i < posunRects1.size(); i++)
+	//{
+	//	cv::rectangle(jiance1, posunRects1[i], -1, 11);
+	//}*/
+	//connected_num = cv::connectedComponentsWithStats(quexian2, labels, stats, centroids);
+	//std::vector<cv::Rect> posunRects2;
+	//for (int i = 1; i < connected_num; i++)
+	//{
+	//	x = stats.at<int>(i, 0);
+	//	y = stats.at<int>(i, 1);
+	//	w = stats.at<int>(i, 2);
+	//	h = stats.at<int>(i, 3);
+	//	if (h < 8 || w < 5)
+	//		continue;
+	//	posunRects2.push_back(cv::Rect(x, y, w, h));
+	//}
+	///*for (size_t i = 0; i < posunRects2.size(); i++)
+	//{
+	//	cv::rectangle(jiance2, posunRects2[i], -1, 11);
+	//}*/
+	//
+	//DefectData temp_defect_posun;
+	//temp_defect_posun.defect_name == "01_JiPianPoSun";
+	//for (size_t i = 0; i < posunRects1.size(); i++)
+	//{
+	//	// temp_defect_posun.defect_name == "01_JiPianPoSun";
+	//	temp_defect_posun.score = 0.9;
+	//	temp_defect_posun.defect_id = 1;
+	//	temp_defect_posun.x = (posunRects1[i].x + jiance1Rect.x + boundRectAT.x) * res_w;
+	//	temp_defect_posun.y = (posunRects1[i].y + jiance1Rect.y) * res_h;
+	//	temp_defect_posun.h = posunRects1[i].height * res_h;
+	//	temp_defect_posun.w = posunRects1[i].width * res_w;
+	//	temp_defect_posun.defect_name == "01_JiPianPoSun";
+	//	defect_data.emplace_back(temp_defect_posun);
+	//	defect_data_result.emplace_back(temp_defect_posun);
+	//}
+	//for (size_t i = 0; i < posunRects2.size(); i++)
+	//{
+	//	temp_defect_posun.defect_name == "01_JiPianPoSun";
+	//	temp_defect_posun.score = 0.9;
+	//	temp_defect_posun.defect_id = 1;
+	//	temp_defect_posun.x = (posunRects2[i].x + jiance2Rect.x + boundRectAT.x) * res_w;
+	//	temp_defect_posun.y = (posunRects2[i].y + jiance2Rect.y) * res_h;
+	//	temp_defect_posun.h = posunRects2[i].height * res_h;
+	//	temp_defect_posun.w = posunRects2[i].width * res_w;
+	//	defect_data.emplace_back(temp_defect_posun);
+	//	defect_data_result.emplace_back(temp_defect_posun);
+	//}
+
+
+
+	// 右侧极片破损检测 0724
+
+	//if (m_defect_thresh_map["01_JiPianPoSun"] < 0.75)
+	//{
+	//	int crop_width = 30;
+	//	cv::Rect right_crop_rt(img.cols - crop_width, 0, crop_width, img.rows - 1);
+	//	cv::Mat posun_img;
+	//	posun_img = img(right_crop_rt);
+	//	cv::cvtColor(posun_img, posun_img, cv::COLOR_BGR2GRAY);
+	//	int result_mean_right = cv::mean(posun_img).val[0];
+	//	cv::Mat posun_img_result;
+	//	cv::threshold(posun_img, posun_img_result, result_mean_right*1.5, 255, cv::THRESH_BINARY);
+	//	//cv::inRange(posun_img, result_mean_right * 1.5, 120, posun_img_result);
+	//	cv::Mat kernel_pos = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+	//	cv::morphologyEx(posun_img_result, posun_img_result, cv::MORPH_OPEN, kernel_pos);
+	//	cv::Mat labels, centroids, stats;
+	//	int connected_num = cv::connectedComponentsWithStats(posun_img_result, labels, stats, centroids);
+	//	int x, y, w, h;
+	//	std::vector<cv::Rect> posunRect;
+	//	for (int i = 1; i < connected_num; i++)
+	//	{
+	//		x = stats.at<int>(i, 0);
+	//		y = stats.at<int>(i, 1);
+	//		w = stats.at<int>(i, 2);
+	//		h = stats.at<int>(i, 3);
+	//		if (w < 2 || h < 2 || h > 100)
+	//			continue;
+	//		posunRect.push_back(cv::Rect(x, y, w, h));
+	//	}
+	//	DefectData temp_defect_posun;
+	//	temp_defect_posun.defect_name = "01_JiPianPoSun";
+	//
+	//	for (size_t i = 0; i < posunRect.size(); i++)
+	//	{
+	//		// temp_defect_posun.defect_name = "01_JiPianPoSun";
+	//		temp_defect_posun.score = 0.72;
+	//		temp_defect_posun.defect_id = 1;
+	//		temp_defect_posun.x = (posunRect[i].x + right_crop_rt.x ) * res_w;
+	//		temp_defect_posun.y = (posunRect[i].y + right_crop_rt.y) * res_h;
+	//		temp_defect_posun.h = posunRect[i].height * res_h;
+	//		temp_defect_posun.w = posunRect[i].width * res_w;
+	//		//temp_defect_posun.defect_name = classes[1];;
+	//		defect_data.emplace_back(temp_defect_posun);
+	//		defect_data_result.emplace_back(temp_defect_posun);
+	//	}
+	//}
+
+
+
+	//漏金属传统算法部分
+	//
+	//if (loujinshu_test.channels() == 3)
+	//	cv::cvtColor(loujinshu_test, loujinshu_test, cv::COLOR_RGB2GRAY);
+	//cv::threshold(loujinshu_test, loujinshu_test, 80, 255, cv::THRESH_BINARY);
+	//cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+	//cv::morphologyEx(loujinshu_test, loujinshu_test, cv::MORPH_CLOSE, kernel);
+	//loujinshu_test.convertTo(loujinshu_test, CV_8UC1);
+	//int connected_num = cv::connectedComponentsWithStats(loujinshu_test, labels_, stats_, centroids_);
+	//for (int i = 1; i < connected_num; ++i)
+	//{
+	//	if ((stats_.at<int>(i, cv::CC_STAT_WIDTH) < img.cols/5 && img.rows/2 < stats_.at<int>(i, cv::CC_STAT_HEIGHT)))
+	//		continue;
+	//	if ((stats_.at<int>(i, cv::CC_STAT_HEIGHT) > 30 || stats_.at<int>(i, cv::CC_STAT_WIDTH) > 30))
+	//	//if ((stats_.at<int>(i, cv::CC_STAT_HEIGHT) > 10 || stats_.at<int>(i, cv::CC_STAT_WIDTH) > 10))
+	//	{
+	//		loujinshu_test_bgr = img(cv::Rect(img.cols / 10 + stats_.at<int>(i, cv::CC_STAT_LEFT), stats_.at<int>(i, cv::CC_STAT_TOP), stats_.at<int>(i, cv::CC_STAT_WIDTH), stats_.at<int>(i, cv::CC_STAT_HEIGHT)));
+	//		double minval=0.0, maxval=0.0;
+	//		if (loujinshu_test_bgr.channels() == 3)
+	//			cv::cvtColor(loujinshu_test_bgr, loujinshu_test_bgr, cv::COLOR_RGB2GRAY);
+	//		cv::minMaxLoc(loujinshu_test_bgr, &minval, &maxval);
+	//		if (maxval > 180)
+	//		{
+	//			temp_defect1.defect_name = "12_LouJinShu";
+	//			//temp_defect1.defect_name = "01_JiPianPoSun";
+	//			temp_defect1.score = 0.6;
+	//			temp_defect1.defect_id = 12;
+	//			//temp_defect1.defect_id = 1;
+	//			temp_defect1.x = (stats_.at<int>(i, cv::CC_STAT_LEFT) + img.cols / 10) * res_w;
+	//			temp_defect1.y = stats_.at<int>(i, cv::CC_STAT_TOP) * res_h;
+	//			temp_defect1.h = stats_.at<int>(i, cv::CC_STAT_HEIGHT) * res_h;
+	//			temp_defect1.w = (stats_.at<int>(i, cv::CC_STAT_WIDTH)) * res_w;
+	//			defect_data.emplace_back(temp_defect1);
+	//			defect_data_result.emplace_back(temp_defect1);
+	//		}
+	//	}
+	//}
+#pragma endregion
+
+	
 
 	DefectData temp_defect, temp_defect1;
 	bool fanguang = false;
@@ -1812,7 +1851,386 @@ StatusCode Detection_J::Detecting(cv::Mat& img, std::vector<DefectData>& defect_
 	qp_height_min = m_defect_thresh_map["qp_height_min"] / 0.078;
 	float dazhou_dis = 0;
 
+	//// 贴胶定位传统算法----------------------------------------------------------------------------------------------------------------
+	//std::vector<cv::Mat> BGR_ORI;
+	//cv::split(srcImg, BGR_ORI);
+	//cv::Mat tiejiao_mat;
+	//cv::inRange(BGR_ORI[2], 80, 100, tiejiao_mat);
+	//cv::Mat tiejiao_kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
 
+	////cv::morphologyEx(temp, temp, cv::MORPH_OPEN, kernel);
+	//cv::morphologyEx(tiejiao_mat, tiejiao_mat, cv::MORPH_CLOSE, tiejiao_kernel);
+
+	//cv::Mat tiejiao_labels, tiejiao_centroids, tiejiao_stats, tiejiao_res_img;
+	//int connected_num_tiejiao;
+	//try
+	//{
+	//	connected_num_tiejiao = cv::connectedComponentsWithStats(tiejiao_mat, tiejiao_labels, tiejiao_stats, tiejiao_centroids);
+	//}
+	//catch (const std::exception&)
+	//{
+	//	LogWriterFlush("无连通域");
+	//}
+
+	//int tiejiao_maxarea = 0;
+	//int tiejiao_i;
+	//int tiejiao_x=0, tiejiao_y=0, tiejiao_w=0, tiejiao_h=0;
+	//for (int i = 1; i < connected_num_tiejiao; i++)
+	//{
+	//	int a = tiejiao_stats.at<int>(i, 4);
+	//	int temp_w = tiejiao_stats.at<int>(i, 2);
+	//	if (a > tiejiao_maxarea && temp_w >1000) {
+	//		tiejiao_maxarea = a;
+	//		tiejiao_i = i;
+	//	}
+	//	else
+	//	{
+	//		continue;
+	//	}
+	//	tiejiao_x = tiejiao_stats.at<int>(tiejiao_i, 0);
+	//	tiejiao_y = tiejiao_stats.at<int>(tiejiao_i, 1);
+	//	tiejiao_w = tiejiao_stats.at<int>(tiejiao_i, 2);
+	//	tiejiao_h = tiejiao_stats.at<int>(tiejiao_i, 3);
+	//}
+	
+
+
+
+	
+
+
+	for (size_t js = 0; js < batch_res.size(); js++) 
+	{
+		
+		temp_defect.defect_name = classes[(int)batch_res[js].class_id];
+		// if (temp_defect.defect_name == "05_OK_Tiejiao_B" || temp_defect.defect_name == "07_OK_Tiejiao_Y" || temp_defect.defect_name == "08_OK_LenLieWen")
+		
+		if (temp_defect.defect_name == "05_OK_Tiejiao_B" || temp_defect.defect_name == "07_OK_Tiejiao_Y")
+		{
+			if (r_tiejiao.width>0)
+				r_tiejiao1 = get_rect(img, batch_res[js].bbox);
+			r_tiejiao = get_rect(img, batch_res[js].bbox);
+
+			if (temp_defect.defect_name == "05_OK_Tiejiao_B")
+			{
+				continue;
+			}
+
+#pragma region MyRegion
+
+			// JC L10 胶纸打皱过滤 ------
+
+			//if (result_num >= 2)
+			//{
+			//	cv::Mat temp;
+			//	std::vector<cv::Mat> BGR;
+			//	temp = img(r_tiejiao);
+			//	cv::split(temp, BGR);
+			//	if (temp_defect.defect_name == "07_OK_Tiejiao_Y")
+			//	{
+			//		cv::threshold(BGR[2], temp, 100, 255, cv::THRESH_BINARY);
+			//	}
+			//	else if (temp_defect.defect_name == "07_OK_Tiejiao_B")
+			//	{
+			//		cv::threshold(BGR[0], temp, 120, 255, cv::THRESH_BINARY);
+			//	}
+			//	cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+			//	cv::morphologyEx(temp, temp, cv::MORPH_OPEN, kernel);
+			//	//temp.convertTo(temp, CV_8UC1);
+			//	cv::Mat labels, centroids, stats, res_img;
+			//	int connected_num = cv::connectedComponentsWithStats(temp, labels, stats, centroids);
+			//	// 找出面积最大的连通域
+			//	int maxAreaLabel = 0;
+			//	int maxArea = 0;
+			//	int x, y, w, h;
+
+			//	for (int i = 1; i < connected_num; i++)
+			//	{
+			//		int a = stats.at<int>(i, 4);
+			//		if (a > maxArea) {
+			//			maxArea = a;
+			//			maxAreaLabel = i;
+			//		}
+			//		x = stats.at<int>(maxAreaLabel, 0);
+			//		y = stats.at<int>(maxAreaLabel, 1);
+			//		w = stats.at<int>(maxAreaLabel, 2);
+			//		h = stats.at<int>(maxAreaLabel, 3);
+			//	}
+			//	// 从标签映射中提取最大连通域
+			//	/*cv::Mat largestCC;
+			//	labels.copyTo(largestCC);
+			//	largestCC.setTo(0, labels != maxAreaLabel);
+			//	largestCC.setTo(255, labels == maxAreaLabel);*/
+			//	boundRect = cv::Rect(x + r_tiejiao.x, y + r_tiejiao.y, w, h);
+			//}
+
+/*
+			// HX L50 胶纸气泡打皱传统算法部分------在AI定位到贴胶后进入下面逻辑------------------------------------------------------
+			try
+			{
+				//cv::Mat temp;
+				std::vector<cv::Mat> BGR;
+
+				int tj_x, tj_y, tj_w, tj_h;
+				//tj_x = r_tiejiao.x * res_w;
+				//tj_y = r_tiejiao.y * res_h;
+				//tj_h = r_tiejiao.height * res_h;
+				//tj_w = r_tiejiao.width * res_w;
+				//cv::Rect tiejiaoRt(tj_x, tj_y, tj_w, tj_h);
+				//cv::Mat temp = srcImg(tiejiaoRt);
+
+				cv::Rect tiejiaoRt(r_tiejiao.x, r_tiejiao.y, r_tiejiao.width, r_tiejiao.height);
+				cv::Mat tiejiao_crop = srcImg(tiejiaoRt).clone();
+
+				cv::split(tiejiao_crop, BGR);
+
+				////**2024/10/25lilu**抓到胶纸打皱与气泡需要检测的区域
+				cv::Mat det_bin;
+				cv::threshold(BGR[2], det_bin, 30, 255, cv::THRESH_BINARY_INV);
+				cv::Mat kernel_jiao = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(20, 10));
+				cv::morphologyEx(det_bin, det_bin, cv::MORPH_CLOSE, kernel_jiao);
+				std::vector<std::vector<cv::Point>> contours1;
+				cv::findContours(det_bin, contours1, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+				cv::Mat det_region = cv::Mat::zeros(tiejiao_crop.size(), CV_8UC1);
+				for (int i = 0; i < contours1.size(); i++) {
+					double area = cv::contourArea(contours1[i]);
+					//if (area > areaMin) {
+					if (area > 100000) {
+
+						cv::drawContours(det_region, contours1, static_cast<int>(i), cv::Scalar(255), -1, 1);
+					}
+				}
+
+
+				//拿到缺陷区域
+				cv::threshold(BGR[2], tiejiao_crop, 35, 255, cv::THRESH_BINARY);
+				cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));				
+				cv::morphologyEx(tiejiao_crop, tiejiao_crop, cv::MORPH_CLOSE, kernel);
+				//kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(20, 2));
+				//cv::morphologyEx(tiejiao_crop, tiejiao_crop, cv::MORPH_OPEN, kernel);
+				
+				//把属于检测区域的缺陷抠出来
+				cv::Mat rest;
+				cv::copyTo(tiejiao_crop, rest, det_region);
+				kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2, 2));
+				cv::morphologyEx(rest, rest, cv::MORPH_OPEN, kernel);
+				
+				cv::Mat labels, centroids, stats, res_img;
+				int connected_num = 0;
+				std::vector<std::vector<cv::Point>> contours;
+				cv::findContours(rest, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+				cv::Mat dst = cv::Mat::zeros(tiejiao_crop.size(), CV_8UC1);
+				double maxArea = 0;
+				int maxIdx = 0;
+				//int areaMin = 10000;
+				int areaMin = 1000, areaMax = 20000;
+				for (int i = 0; i < contours.size(); i++) {
+					double area = cv::contourArea(contours[i]);
+					//if (area > areaMin) {
+					if (area > areaMin && area < areaMax) {
+						maxArea = area;
+						maxIdx = i;
+						cv::drawContours(dst, contours, static_cast<int>(maxIdx), cv::Scalar(255), -1, 1);
+					}
+				}
+
+				int maxAreaLabel = 0;
+				maxArea = 0;
+				int x, y, w, h;
+				int x_min = 9999;
+
+				////20241024胶纸打皱
+				//cv::Mat dst1 = cv::Mat::zeros(tiejiao_crop.size(), CV_8UC1);
+				//cv::Mat grayTemp1, grayTemp2;
+				//cv::threshold(tiejiao_crop, grayTemp1, 200, 255, cv::THRESH_BINARY_INV);
+				//
+
+				//std::vector<std::vector<cv::Point>> contours1;
+				//cv::findContours(grayTemp1, contours1, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+				//for (int i = 0; i < contours1.size(); i++) {
+				//	double area = cv::contourArea(contours1[i]);
+				//	//if (area > areaMin) {
+				//	if (area > 100000) {
+
+				//		cv::drawContours(dst1, contours1, static_cast<int>(i), cv::Scalar(255), -1, 1);
+				//	}
+				//}
+
+				//cv::Mat kernel1 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(40, 40));
+				//cv::morphologyEx(dst1, grayTemp2, cv::MORPH_CLOSE, kernel1);
+
+				//cv::Mat rest;
+				//cv::copyTo(tiejiao_crop, rest, grayTemp2);
+
+
+				cv::Mat grayTemp;
+				cv::threshold(tiejiao_crop, grayTemp, 200, 255, cv::THRESH_BINARY_INV);
+				//cv::morphologyEx(grayTemp, grayTemp, cv::MORPH_OPEN, kernel);
+				maxAreaLabel = 0;
+				try
+				{
+					connected_num = cv::connectedComponentsWithStats(grayTemp, labels, stats, centroids);
+				}
+				catch (const std::exception&)
+				{
+					spdlog::get("CATL_WCP")->error("无连通域");
+					//LogWriterFlush("无连通域");
+					continue;
+				}
+			
+				for (int i = 1; i < connected_num; i++)
+				{
+					int x_temp = stats.at<int>(i, 0);
+					if (x_temp < x_min) {
+						x_min = x_temp;
+						maxAreaLabel = i;
+					}
+					x = stats.at<int>(maxAreaLabel, 0);
+					y = stats.at<int>(maxAreaLabel, 1);
+					w = stats.at<int>(maxAreaLabel, 2);
+					h = stats.at<int>(maxAreaLabel, 3);
+				}
+				cv::Mat add_out;
+				cv::add(BGR[2], dst, add_out);
+			
+				cv::Rect detectRt(x + w, 0, add_out.cols - x - w - 10, add_out.rows);
+				cv::Mat detectImg = add_out(detectRt);
+				cv::Mat detectGray;
+
+				//cv::inRange(detectImg, 30, 254, detectGray);
+				cv::inRange(detectImg, 240, 255, detectGray);
+
+				kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 2));
+				cv::Mat open_kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+				cv::morphologyEx(detectGray, detectGray, cv::MORPH_CLOSE, kernel);
+				cv::morphologyEx(detectGray, detectGray, cv::MORPH_OPEN, open_kernel);
+				connected_num = 0;
+				try
+				{
+					connected_num = cv::connectedComponentsWithStats(detectGray, labels, stats, centroids);
+				}
+				catch (const std::exception&)
+				{
+					spdlog::get("CATL_WCP")->error("无连通域");
+					continue;
+				}
+				maxAreaLabel = 0;
+				maxArea = 0;
+				DefectData temp_defect_qipao;
+				temp_defect_qipao.defect_id = 19;
+				temp_defect_qipao.defect_name = "22_JiaoZhiQiPao";
+				temp_defect_qipao.score = 0.7;
+				for (int i = 1; i < connected_num; i++)
+				{
+					int qipao_x = stats.at<int>(i, 0);
+					int qipao_y = stats.at<int>(i, 1);
+					int qipao_w = stats.at<int>(i, 2);
+					int qipao_h = stats.at<int>(i, 3);
+
+
+					if (qipao_x == 0)
+					{
+						continue;
+					}
+
+					//区分气泡和打皱20241028
+					//int _x = (qipao_x - 10 <= 0)? 0: qipao_x - 10;
+					cv::Mat defect = detectGray(cv::Rect(qipao_x - 10, qipao_y - 10, qipao_w + 20, qipao_h + 20));
+					std::vector<std::vector<cv::Point>> contours2;
+					cv::findContours(defect, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+					cv::RotatedRect r1 = cv::minAreaRect(contours[0]);
+					float cz = 0, dz = 0;
+					if (r1.size.width > r1.size.height)
+					{
+						cz = r1.size.width;
+						dz = r1.size.height;
+					}
+					else
+					{
+						dz = r1.size.width;
+						cz = r1.size.height;
+					}
+					
+					if (cz / dz > 4) // 20_JiaoZhiDaZhou
+					{
+						temp_defect_qipao.defect_id = 20;
+						temp_defect_qipao.defect_name = "20_JiaoZhiDaZhou";
+
+						if (abs(qipao_y + tiejiaoRt.y + detectRt.y - y1) < abs(qipao_y + tiejiaoRt.y + detectRt.y - y2))
+						{
+							dazhou_dis = abs(qipao_y + tiejiaoRt.y + detectRt.y - y1);
+						}
+						else
+						{
+							dazhou_dis = abs(qipao_y + tiejiaoRt.y + detectRt.y + qipao_h - y1);
+						}
+
+						if (dazhou_dis > dazhou_disthre)
+						{
+							continue;
+						}
+						
+					}
+					else // 22_JiaoZhiQiPao
+					{
+						temp_defect_qipao.defect_id = 22;
+						temp_defect_qipao.defect_name = "22_JiaoZhiQiPao";
+						//temp_defect_qipao.defect_name = "20_JiaoZhiDaZhou";
+					}
+
+					if (qipao_w <= qp_width_min || qipao_h <= qp_height_min)
+					{
+						continue;
+					}
+
+
+					temp_defect_qipao.x = stats.at<int>(i, 0) + tiejiaoRt.x + detectRt.x;
+					temp_defect_qipao.y = stats.at<int>(i, 1) + tiejiaoRt.y + detectRt.y;
+					temp_defect_qipao.w = stats.at<int>(i, 2);
+					temp_defect_qipao.h = stats.at<int>(i, 3);
+					spdlog::get("CATL_WCP")->info("检测到" + temp_defect_qipao.defect_name);
+					spdlog::get("CATL_WCP")->info("defect_name:" + temp_defect_qipao.defect_name + ", defect_id:" + std::to_string(temp_defect_qipao.defect_id)
+						+ ", x:" + std::to_string(temp_defect_qipao.x) + ", y:" + std::to_string(temp_defect_qipao.y) + ", w:" + std::to_string(temp_defect_qipao.w)
+						+ ", h:" + std::to_string(temp_defect_qipao.h));
+					//LogWriterFlush("检测到" + temp_defect_qipao.defect_name);
+					//LogWriterFlush("defect_name:" + temp_defect_qipao.defect_name +", defect_id:" + std::to_string(temp_defect_qipao.defect_id)
+					//+ ", x:" + std::to_string(temp_defect_qipao.x) + ", y:" + std::to_string(temp_defect_qipao.y) + ", w:" + std::to_string(temp_defect_qipao.w)
+					//+ ", h:" + std::to_string(temp_defect_qipao.h));
+
+					defect_data.emplace_back(temp_defect_qipao);
+					defect_data_result.emplace_back(temp_defect_qipao);
+				}
+				// 从标签映射中提取最大连通域
+				//cv::Mat largestCC;
+				//labels.copyTo(largestCC);
+				//largestCC.setTo(0, labels != maxAreaLabel);
+				//largestCC.setTo(255, labels == maxAreaLabel);
+				//boundRect = cv::Rect(x + r_tiejiao.x, y + r_tiejiao.y, w, h);
+
+
+				//defect_data.emplace_back(temp_defect);
+				//defect_data_result.emplace_back(temp_defect);
+
+				//continue;
+			}
+			catch (const std::exception& e)
+			{
+				spdlog::get("CATL_WCP")->error("传统算法检测打皱气泡失败");
+				spdlog::get("CATL_WCP")->error(std::string(e.what()));
+				//LogWriterFlush("传统检测未检测到气泡打皱");
+				continue;
+			}
+*/
+
+#pragma endregion
+
+			
+		}
+	}
+
+	
+		
 
 	for (size_t j = 0; j < batch_res.size(); j++) 
 	{
@@ -1832,15 +2250,6 @@ StatusCode Detection_J::Detecting(cv::Mat& img, std::vector<DefectData>& defect_
 
 			continue;
 		}
-
-
-		//////////2025-03-18 解决JC常规检测项中胶纸气泡打皱过杀//////////
-
-		if (temp_defect.defect_name == "20_JiaoZhiDaZhou" || temp_defect.defect_name == "22_JiaoZhiQiPao" || temp_defect.defect_name =="25_LP_JiaoZhiDaZhou" || temp_defect.defect_name == "26_LP_JiaoZhiPoSun") {
-
-			continue;
-		}
-
 
 		//对ok字段的缺陷进行过滤
 		if (temp_defect.defect_name == "14_OK_FanGuang" || temp_defect.defect_name == "05_OK_Tiejiao_B" || temp_defect.defect_name == "07_OK_Tiejiao_Y" || temp_defect.defect_name == "18_OK_Tiejiao_W")
@@ -2105,6 +2514,28 @@ StatusCode Detection_J::Detecting(cv::Mat& img, std::vector<DefectData>& defect_
 			continue;
 		}
 
+		//胶纸打皱
+		//if (temp_defect.defect_name == "20_JiaoZhiDaZhou")
+		//{
+		//	// std::cout << "jiaozhi " << std::endl;
+		//	if (r.y > boundRect.y && r.y < boundRect.y + boundRect.height)
+		//	{
+		//		LogWriterFlush("胶纸打皱位置在对贴区");
+		//		continue;
+		//	}
+		//}
+
+		// LY胶纸
+		//if (temp_defect.defect_name == "19_JiaoZhiFanZhe" || temp_defect.defect_name == "20_JiaoZhiDaZhou" 
+		//	|| temp_defect.defect_name == "21_WeiChongDie")
+		//{
+		//	if (r.y > r_tiejiao.y + r_tiejiao.height || r.y + r.height < r_tiejiao.y)
+		//	{
+		//		//LogWriterFlush("胶纸打皱不在胶纸区域");
+		//		continue;
+		//	}
+		//}
+
 		temp_defect.x = r.x;
 		temp_defect.y = r.y;
 		temp_defect.h = r.height;
@@ -2145,642 +2576,20 @@ StatusCode Detection_J::Detecting(cv::Mat& img, std::vector<DefectData>& defect_
 			if (temp_defect1.y<r_tiejiao1.y + r_tiejiao1.height && temp_defect1.y + temp_defect1.h>r_tiejiao1.y)
 				return StatusCode::SUCCESS;
 		}
-
-
 		defect_data.emplace_back(temp_defect1);
 		defect_data_result.emplace_back(temp_defect1);
-
-
 	}
 
+	// HX L50 胶纸气泡检测
+	//DetectBubble(img, defect_data, img_x, img_w, XYdataUp, XYdataDown, m_defect_thresh_map, 1); // 气泡
+	DetectDaZhou(img, defect_data, img_x, img_w, XYdataUp, XYdataDown, m_defect_thresh_map, 1); // 打皱
+
+
+	/*t_cost = (static_cast<double>(cv::getTickCount()) - time1) / cv::getTickFrequency() * 1000;
+	std::cout << "after cost(ms): " << t_cost << std::endl;*/
+	//cv::rectangle(img, boundRect, cv::Scalar(0, 255, 0), 10);
 	return StatusCode::SUCCESS;
 }
-
-
-
-
-
-StatusCode Detection_J::DetectingJiaoZhi(cv::Mat& img, std::vector<DefectData>& defect_data, int img_x, int img_w, std::vector<std::pair<int, int>>& XYdataUp, std::vector<std::pair<int, int>>& XYdataDown, int tape_flag)
-{
-
-	double time1;  // 检测时间记录
-	double t_cost;  // 检测时间统计
-
-	time1 = static_cast<double>(cv::getTickCount());
-	time1 = static_cast<double>(cv::getTickCount());
-	if (img.empty()) {
-		spdlog::get("CATL_WCP")->error("read image failed!");
-		//LogWriterFlush("read image failed!.");
-		return StatusCode::ROI_IMG_EMPTY;
-	}
-
-
-	//////////按坐标区分最大区域///////
-	cv::Point newCoordinate_up;
-	cv::Point newCoordinate_down;
-
-	//////////2025-04-07 解决供应商坐标偏移问题//////////
-	/*if (XYdataUp[0].second >= XYdataUp[1].second) {
-		newCoordinate_up = cv::Point(XYdataUp[0].first, XYdataUp[1].second);
-	}
-	else {
-		newCoordinate_up = cv::Point(XYdataUp[0].first, XYdataUp[0].second);
-	}
-
-	if (XYdataDown[2].second >= XYdataDown[3].second) {
-		newCoordinate_down = cv::Point(XYdataDown[2].first, XYdataDown[2].second);
-	}
-	else {
-		newCoordinate_down = cv::Point(XYdataDown[2].first, XYdataDown[3].second);
-	}*/
-
-	
-	if (XYdataUp[0].second >= XYdataUp[1].second) {
-		newCoordinate_up = cv::Point(XYdataUp[0].first, XYdataUp[1].second - 5);
-	}
-	else {
-		newCoordinate_up = cv::Point(XYdataUp[0].first, XYdataUp[0].second - 5);
-	}
-
-	if (XYdataDown[2].second >= XYdataDown[3].second) {
-		newCoordinate_down = cv::Point(XYdataDown[2].first, XYdataDown[2].second + 5);
-	}
-	else {
-		newCoordinate_down = cv::Point(XYdataDown[2].first, XYdataDown[3].second + 5);
-	}
-
-
-	// 确保 newCoordinate_down 的 y 坐标大于等于 newCoordinate_up 的 y 坐标
-	if (newCoordinate_down.y <= newCoordinate_up.y) {
-		std::swap(newCoordinate_up, newCoordinate_down);
-	}
-
-	cv::Rect cropRect(newCoordinate_up, newCoordinate_down);
-	cv::Mat TieJiaoQuYu = img(cropRect);
-
-
-
-	////////////LUON01 2025-04-01 根据贴胶区域长宽切块//////////
-	int splitCount = TieJiaoQuYu.cols % TieJiaoQuYu.rows > TieJiaoQuYu.rows / 2 ? TieJiaoQuYu.cols / TieJiaoQuYu.rows + 1 : TieJiaoQuYu.cols / TieJiaoQuYu.rows;
-	//int splitCount = 10;
-	//int splitCount = 5;
-	int partHeight = TieJiaoQuYu.rows;
-	int partWidth = TieJiaoQuYu.cols / splitCount;
-
-
-	std::vector<cv::Mat> parts;
-	for (int i = 0; i < splitCount; ++i) {
-		cv::Rect roi(i * partWidth, 0, partWidth, partHeight);
-		cv::Mat part = TieJiaoQuYu(roi).clone();
-		parts.push_back(part);
-	}
-
-	//遍历每块图片
-	double ratio;
-	std::vector<Yolo::Detection> batch_res;
-	for (size_t part_idx = 0; part_idx < parts.size(); ++part_idx) {
-		batch_res.clear();
-		cv::Mat& img = parts[part_idx];
-		cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H, &ratio);
-
-		/////nb/////
-		int i = 0;
-		//检测前数据转换
-		for (int row = 0; row < INPUT_H; ++row) {
-
-			uchar* uc_pixel = pr_img.data + row * pr_img.step;
-			for (int col = 0; col < INPUT_W; ++col) {
-				data[i] = (float)uc_pixel[2] / 255.0;
-				data[i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-				data[i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
-				uc_pixel += 3;
-				++i;
-			}
-		}
-		//tensorRT推理
-		double time2 = static_cast<double>(cv::getTickCount());
-		doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
-		nms(batch_res, &prob[0], CONF_THRESH, NMS_THRESH);
-
-
-		////////贴胶最大区域/////
-		const float w1 = newCoordinate_up.x;
-		const float h1 = newCoordinate_up.y;
-
-
-		std::vector<decltype(batch_res)::value_type> updated_batch_res;
-
-
-		for (size_t j = 0; j < batch_res.size(); j++)
-		{
-
-			DefectData temp_defect_jiaozhi;
-			temp_defect_jiaozhi.defect_name = classes_jiaozhi[(int)batch_res[j].class_id];
-			temp_defect_jiaozhi.score = batch_res[j].conf;
-			temp_defect_jiaozhi.defect_id = batch_res[j].class_id;
-			cv::Rect r = get_rect(img, batch_res[j].bbox);
-
-			
-			/////2025.1.21打皱改为AI检测/////
-			if (batch_res[j].conf < m_defect_thresh_map[temp_defect_jiaozhi.defect_name])
-			{
-
-				spdlog::get("CATL_WCP")->info(temp_defect_jiaozhi.defect_name + "置信度低于阈值 当前推理置信度为" + std::to_string(batch_res[j].conf));	
-				continue;
-
-			}
-
-
-			//////////2025-03-18——解决JC边缘为贴紧导致的过杀//////////
-			cv::Mat gray_image;
-			cv::cvtColor(img, gray_image, cv::COLOR_BGR2GRAY);
-			cv::Scalar mean_value = cv::mean(gray_image(r));
-			double avg_gray = mean_value.val[0];
-			//////////2025-07-10 白色拐角胶切断胶检测项合并//////////
-			if (temp_defect_jiaozhi.defect_name == "22_JiaoZhiQiPao" && avg_gray <= m_defect_thresh_map["qp_avg_gray"]) {
-
-				spdlog::get("CATL_WCP")->info("气泡平均灰度值为："+ std::to_string (mean_value.val[0])+  "小于卡控参数过滤");
-				continue;
-
-			}
-			//////////2025-07-10 白色拐角胶切断胶检测项合并//////////
-			if (temp_defect_jiaozhi.defect_name == "25_LP_JiaoZhiDaZhou" && avg_gray <= m_defect_thresh_map["dz_avg_gray"]) {
-
-				spdlog::get("CATL_WCP")->info("打皱平均灰度值为："+ std::to_string (mean_value.val[0])+  "小于卡控参数过滤");
-				continue;
-
-			}
-
-
-			//坐标转换
-			temp_defect_jiaozhi.x = r.x;
-			temp_defect_jiaozhi.y = r.y;
-			temp_defect_jiaozhi.x += w1 + part_idx * partWidth;
-			temp_defect_jiaozhi.y += h1;
-			temp_defect_jiaozhi.h = r.height;
-			temp_defect_jiaozhi.w = r.width;
-
-
-			/////////////////开放气泡卡控参数///////////////
-			if (temp_defect_jiaozhi.defect_name == "22_JiaoZhiQiPao") {
-				if (temp_defect_jiaozhi.w * m_defect_thresh_map["qp_c_calibration"] < m_defect_thresh_map["qp_c"] && temp_defect_jiaozhi.h * m_defect_thresh_map["qp_k_calibration"] < m_defect_thresh_map["qp_k"])
-				{
-					spdlog::get("CATL_WCP")->info(temp_defect_jiaozhi.defect_name + "bbox长为："+ std ::to_string(temp_defect_jiaozhi.w) + "，" + "bbox宽为:" + std::to_string(temp_defect_jiaozhi.h) + ",小于气泡卡控参数过滤");
-					continue;
-				}
-			}
-
-
-			//////////2025-04-03 气泡长宽比接近1:1 _+参数时过滤//////////
-			if (temp_defect_jiaozhi.defect_name == "22_JiaoZhiQiPao") {
-
-				double aspect_ratio = static_cast<double>(temp_defect_jiaozhi.w) / temp_defect_jiaozhi.h;
-				double square_threshold = 1.0;  
-
-				if (std::abs(aspect_ratio - square_threshold) < m_defect_thresh_map["tolerance"]) {
-					spdlog::get("CATL_WCP")->info(temp_defect_jiaozhi.defect_name + " bbox长为：" + std::to_string(temp_defect_jiaozhi.w) + "，" + "bbox宽为:" + std::to_string(temp_defect_jiaozhi.h) + ", 长宽比接近正方形过滤");
-					continue;
-				}
-
-			}
-
-
-			//////////2025-04-11 解决气泡两端过杀问题//////////
-			if (temp_defect_jiaozhi.defect_name == "22_JiaoZhiQiPao") {
-
-				if (temp_defect_jiaozhi.x + temp_defect_jiaozhi.w < XYdataUp[0].first + m_defect_thresh_map["left_distance"]) {
-					spdlog::get("CATL_WCP")->info(temp_defect_jiaozhi.defect_name + "左边气泡过滤");
-					continue;
-				}
-
-				if (temp_defect_jiaozhi.x < XYdataUp[1].first - m_defect_thresh_map["right_distance"]) {
-					spdlog::get("CATL_WCP")->info(temp_defect_jiaozhi.defect_name + "右边气泡过滤");
-					continue;
-				}
-
-			}
-
-
-
-
-			///////////////2025.1.21开放打皱卡控参数//////////
-			//////////2025-07-10 白色拐角胶切断胶检测项合并//////////
-			//if (temp_defect_jiaozhi.defect_name == "20_JiaoZhiDaZhou") {
-			if (temp_defect_jiaozhi.defect_name == "25_LP_JiaoZhiDaZhou") {
-				if (temp_defect_jiaozhi.w * m_defect_thresh_map["dz_c_calibration"] < m_defect_thresh_map["dz_c"] && temp_defect_jiaozhi.h * m_defect_thresh_map["dz_k_calibration"] < m_defect_thresh_map["dz_k"])
-				{
-					spdlog::get("CATL_WCP")->info(temp_defect_jiaozhi.defect_name + "bbox长为：" + std::to_string(temp_defect_jiaozhi.w) + "，" + "bbox宽为:" + std::to_string(temp_defect_jiaozhi.h) + ",小于打皱卡控参数过滤");
-					continue;
-				}
-			}
-
-
-			//////////2025-04-01 LUON01 解决JC垂直宽度较窄的打皱过杀//////////
-			//////////2025-07-10 白色拐角胶切断胶检测项合并//////////
-			//if (temp_defect_jiaozhi.defect_name == "20_JiaoZhiDaZhou") {
-			if (temp_defect_jiaozhi.defect_name == "25_LP_JiaoZhiDaZhou") {
-				if (temp_defect_jiaozhi.w * m_defect_thresh_map["dz_c_calibration"] <= m_defect_thresh_map["dz_w_min"])
-				{
-					spdlog::get("CATL_WCP")->info(temp_defect_jiaozhi.defect_name + "过窄过滤");
-					continue;
-				}
-			}
-
-
-
-			////////////////贴胶区域过滤////////////////////
-			int tiejiao_up, tiejiao_down;
-
-			if (XYdataUp[2].second <= XYdataUp[3].second) {
-				tiejiao_up = XYdataUp[2].second + m_defect_thresh_map["up_offset"];
-			}else {
-				tiejiao_up = XYdataUp[3].second + m_defect_thresh_map["up_offset"];
-			}
-
-			if (XYdataDown[0].second <= XYdataDown[1].second) {
-				tiejiao_down = XYdataDown[1].second + m_defect_thresh_map["down_offset"];
-			}
-			else {
-				tiejiao_down = XYdataDown[0].second + m_defect_thresh_map["down_offset"];
-			}
-			if (tiejiao_up < temp_defect_jiaozhi.y && temp_defect_jiaozhi.y + temp_defect_jiaozhi.h < tiejiao_down) {
-				spdlog::get("CATL_WCP")->info("处于贴胶区域过滤");
-				continue;
-			}
-
-
-			//////////////2025-04-09 贴胶区域上下边缘过滤//////////
-			//int tiejiao_up_up, tiejiao_down_down;
-			//if (XYdataUp[0].second <= XYdataUp[1].second) {
-			//	tiejiao_up_up = XYdataUp[0].second + m_defect_thresh_map["up_up_offset"];
-			//}
-			//else {
-			//	tiejiao_up_up = XYdataUp[1].second + m_defect_thresh_map["up_up_offset"];
-			//}
-			//if (XYdataDown[2].second <= XYdataDown[3].second) {
-			//	tiejiao_down_down = XYdataDown[3].second + m_defect_thresh_map["down_down_offset"];
-			//}
-			//else {
-			//	tiejiao_down_down = XYdataDown[2].second + m_defect_thresh_map["down_down_offset"];
-			//}
-			//if (temp_defect_jiaozhi.defect_name == "22_JiaoZhiQiPao") {
-			//	if (tiejiao_up_up < temp_defect_jiaozhi.y && temp_defect_jiaozhi.y + temp_defect_jiaozhi.h < tiejiao_down_down) {
-			//		spdlog::get("CATL_WCP")->info("胶纸气泡处于贴胶区域上下边缘过滤");
-			//		continue;
-			//	}
-			//}
-
-
-			////////////2025-04-14 解决打皱检测成气泡的问题//////////
-			//if (temp_defect_jiaozhi.defect_name == "22_JiaoZhiQiPao") {
-			//	cv::Mat binary;
-			//	double thresholdValue = 200;
-			//	double minHighlightRatio = 0.01;
-			//	threshold(gray_image, binary, thresholdValue, 255, cv::THRESH_BINARY);
-			//	cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-			//	morphologyEx(binary, binary, cv::MORPH_OPEN, kernel);
-			//	
-			//	int totalPixels = temp_defect_jiaozhi.x * temp_defect_jiaozhi.y;
-			//	int highlightPixels = countNonZero(binary);
-			//	if (highlightPixels / static_cast<double>(totalPixels) <=  minHighlightRatio) {
-			//		continue;
-			//	}
-			//}
-			
-
-
-			/////2025.1.21打皱AI检测/////
-			spdlog::get("CATL_WCP")->info("模型推理成功,结果为：" + temp_defect_jiaozhi.defect_name + " 阈值为：" + std::to_string(temp_defect_jiaozhi.score));
-			defect_data.emplace_back(temp_defect_jiaozhi);
-
-		}
-
-	}
-	return StatusCode::SUCCESS;
-}
-
-
-
-
-//////////20225-05-19 LUON01 拐角胶打皱、破损检测//////////
-StatusCode Detection_J::DetectingGuaiJiao_1(cv::Mat& img, std::vector<DefectData>& defect_data, int img_x, int img_w, std::vector<std::pair<int, int>>& XYdataUp, std::vector<std::pair<int, int>>& XYdataDown, int tape_flag)
-{
-
-	if (img.empty()) {
-		spdlog::get("CATL_WCP")->error("read image failed!");
-		//LogWriterFlush("read image failed!.");
-		return StatusCode::ROI_IMG_EMPTY;
-	}
-
-	//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-	spdlog::get("CATL_WCP")->info("Cam1 函数【CatlDetect】进入检测");
-
-
-	//////////按坐标区分最大区域///////
-	cv::Point newCoordinate_up;
-	cv::Point newCoordinate_down;
-
-
-	if (XYdataUp[0].second >= XYdataUp[1].second) {
-		newCoordinate_up = cv::Point(XYdataUp[0].first, XYdataUp[1].second - 5);
-	}
-	else {
-		newCoordinate_up = cv::Point(XYdataUp[0].first, XYdataUp[0].second - 5);
-	}
-
-	if (XYdataDown[0].second >= XYdataDown[1].second) {
-		newCoordinate_down = cv::Point(XYdataDown[0].first, XYdataDown[0].second + 5);
-	}
-	else {
-		newCoordinate_down = cv::Point(XYdataDown[0].first, XYdataDown[1].second + 5);
-	}
-
-
-	cv::Rect cropRect(newCoordinate_up, newCoordinate_down);
-	cv::Mat TieJiaoQuYu = img(cropRect);
-
-	//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-	spdlog::get("CATL_WCP")->info("Cam1 函数【CatlDetect】完成拐角区域裁剪");
-
-
-	////////////2025-05-16 中州拐角胶过杀//////////
-	//namespace fs5 = std::filesystem;
-	//std::string dir_path5 = "D:/AI_Log/patch1";
-	//if (!fs5::exists(dir_path5)) {
-	//	fs5::create_directories(dir_path5);
-	//}
-	//std::string file_name3 = dir_path5 + "/" + std::to_string(static_cast<int>(cv::getTickCount())) + ".bmp";
-	//cv::imwrite(file_name3, TieJiaoQuYu);
-
-
-
-
-	int splitCount = TieJiaoQuYu.cols % TieJiaoQuYu.rows > TieJiaoQuYu.rows / 2 ? TieJiaoQuYu.cols / TieJiaoQuYu.rows + 1 : TieJiaoQuYu.cols / TieJiaoQuYu.rows;
-	int partHeight = TieJiaoQuYu.rows;
-	int partWidth = TieJiaoQuYu.cols / splitCount;
-
-
-	std::vector<cv::Mat> parts;
-	for (int i = 0; i < splitCount; ++i) {
-		cv::Rect roi(i * partWidth, 0, partWidth, partHeight);
-		cv::Mat part = TieJiaoQuYu(roi).clone();
-		parts.push_back(part);
-	}
-
-	//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-	spdlog::get("CATL_WCP")->info("Cam1 函数【CatlDetect】完成拐角区域切块");
-
-
-	//遍历每块图片
-	double ratio;
-	std::vector<Yolo::Detection> batch_res;
-	for (size_t part_idx = 0; part_idx < parts.size(); ++part_idx) {
-		batch_res.clear();
-		cv::Mat& img = parts[part_idx];
-		cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H, &ratio);
-
-		/////nb/////
-		int i = 0;
-		//检测前数据转换
-		for (int row = 0; row < INPUT_H; ++row) {
-
-			uchar* uc_pixel = pr_img.data + row * pr_img.step;
-			for (int col = 0; col < INPUT_W; ++col) {
-				data[i] = (float)uc_pixel[2] / 255.0;
-				data[i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-				data[i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
-				uc_pixel += 3;
-				++i;
-			}
-		}
-
-
-		//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-		spdlog::get("CATL_WCP")->info("Cam1 函数【CatlDetect】开始patch模型推理 " );
-
-
-		//tensorRT推理
-		double time2 = static_cast<double>(cv::getTickCount());
-		doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
-		nms(batch_res, &prob[0], CONF_THRESH, NMS_THRESH);
-		
-		//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-		spdlog::get("CATL_WCP")->info("Cam1 函数【CatlDetect】完成patch模型推理 ");
-
-
-		const float w1 = newCoordinate_up.x;
-		const float h1 = newCoordinate_up.y;
-
-		//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-		if (batch_res.size() == 0)
-		{
-			spdlog::get("CATL_WCP")->info("Cam1 函数【CatlDetect】patch未检出缺陷 ");
-		}
-
-		for (size_t j = 0; j < batch_res.size(); j++)
-		{
-
-			DefectData temp_defect_guaijiao;
-			temp_defect_guaijiao.defect_name = classes_guaijiao[(int)batch_res[j].class_id];
-			temp_defect_guaijiao.score = batch_res[j].conf;
-			temp_defect_guaijiao.defect_id = batch_res[j].class_id;
-			cv::Rect r = get_rect(img, batch_res[j].bbox);
-
-			//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-			spdlog::get("CATL_WCP")->info("Cam1 函数【CatlDetect】对patch检出的缺陷进行置信度过滤 ");
-
-			if (batch_res[j].conf < m_defect_thresh_map[temp_defect_guaijiao.defect_name])
-			{
-				//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-				spdlog::get("CATL_WCP")->info(temp_defect_guaijiao.defect_name + "cam1_patch置信度低于阈值 当前推理置信度为" + std::to_string(batch_res[j].conf));
-				continue;
-
-			}
-
-			//坐标转换
-			temp_defect_guaijiao.x = r.x;
-			temp_defect_guaijiao.y = r.y;
-			temp_defect_guaijiao.x += w1 + part_idx * partWidth;
-			temp_defect_guaijiao.y += h1;
-			temp_defect_guaijiao.h = r.height;
-			temp_defect_guaijiao.w = r.width;
-			
-
-			//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-			spdlog::get("CATL_WCP")->info("cam1_patch拐角胶模型推理成功,结果为：" + temp_defect_guaijiao.defect_name + " 阈值为：" + std::to_string(temp_defect_guaijiao.score));
-			defect_data.emplace_back(temp_defect_guaijiao);
-
-		}
-
-	}
-	return StatusCode::SUCCESS;
-}
-
-
-
-
-
-//////////20225-05-19 LUON01 拐角胶打皱、破损检测//////////
-StatusCode Detection_J::DetectingGuaiJiao_2(cv::Mat& img, std::vector<DefectData>& defect_data, int img_x, int img_w, std::vector<std::pair<int, int>>& XYdataUp, std::vector<std::pair<int, int>>& XYdataDown, int tape_flag)
-{
-
-	if (img.empty()) {
-		spdlog::get("CATL_WCP")->error("read image failed!");
-		//LogWriterFlush("read image failed!.");
-		return StatusCode::ROI_IMG_EMPTY;
-	}
-
-
-	//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-	spdlog::get("CATL_WCP")->info("Cam2 函数【CatlDetectCam2】进入检测");
-
-
-	//////////按坐标区分最大区域///////
-	cv::Point newCoordinate_up;
-	cv::Point newCoordinate_down;
-
-
-	if (XYdataUp[0].second >= XYdataUp[1].second) {
-		newCoordinate_up = cv::Point(XYdataUp[0].first, XYdataUp[1].second - 5);
-	}
-	else {
-		newCoordinate_up = cv::Point(XYdataUp[0].first, XYdataUp[0].second - 5);
-	}
-
-	if (XYdataDown[0].second >= XYdataDown[1].second) {
-		newCoordinate_down = cv::Point(XYdataDown[0].first, XYdataDown[0].second + 5);
-	}
-	else {
-		newCoordinate_down = cv::Point(XYdataDown[0].first, XYdataDown[1].second + 5);
-	}
-
-
-	cv::Rect cropRect(newCoordinate_up, newCoordinate_down);
-	cv::Mat TieJiaoQuYu = img(cropRect);
-
-
-	//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-	spdlog::get("CATL_WCP")->info("Cam2 函数【CatlDetectCam2】完成拐角区域裁剪");
-
-
-
-
-	////////////2025-05-16 中州拐角胶过杀//////////
-	//namespace fs5 = std::filesystem;
-	//std::string dir_path5 = "D:/AI_Log/patch2";
-	//if (!fs5::exists(dir_path5)) {
-	//	fs5::create_directories(dir_path5);
-	//}
-	//std::string file_name3 = dir_path5 + "/" + std::to_string(static_cast<int>(cv::getTickCount())) + ".bmp";
-	//cv::imwrite(file_name3, TieJiaoQuYu);
-
-
-
-
-	int splitCount = TieJiaoQuYu.cols % TieJiaoQuYu.rows > TieJiaoQuYu.rows / 2 ? TieJiaoQuYu.cols / TieJiaoQuYu.rows + 1 : TieJiaoQuYu.cols / TieJiaoQuYu.rows;
-	int partHeight = TieJiaoQuYu.rows;
-	int partWidth = TieJiaoQuYu.cols / splitCount;
-
-
-	std::vector<cv::Mat> parts;
-	for (int i = 0; i < splitCount; ++i) {
-		cv::Rect roi(i * partWidth, 0, partWidth, partHeight);
-		cv::Mat part = TieJiaoQuYu(roi).clone();
-		parts.push_back(part);
-	}
-
-
-	//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-	spdlog::get("CATL_WCP")->info("Cam2 函数【CatlDetectCam2】完成拐角区域切块");
-
-
-	//遍历每块图片
-	double ratio;
-	std::vector<Yolo::Detection> batch_res;
-	for (size_t part_idx = 0; part_idx < parts.size(); ++part_idx) {
-		batch_res.clear();
-		cv::Mat& img = parts[part_idx];
-		cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H, &ratio);
-
-		/////nb/////
-		int i = 0;
-		//检测前数据转换
-		for (int row = 0; row < INPUT_H; ++row) {
-
-			uchar* uc_pixel = pr_img.data + row * pr_img.step;
-			for (int col = 0; col < INPUT_W; ++col) {
-				data[i] = (float)uc_pixel[2] / 255.0;
-				data[i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-				data[i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
-				uc_pixel += 3;
-				++i;
-			}
-		}
-
-
-
-		spdlog::get("CATL_WCP")->info("Cam2 函数【CatlDetectCam2】开始patch模型推理 ");
-
-
-
-		//tensorRT推理
-		double time2 = static_cast<double>(cv::getTickCount());
-		doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
-		nms(batch_res, &prob[0], CONF_THRESH, NMS_THRESH);
-		spdlog::get("CATL_WCP")->info("Cam2 函数【CatlDetectCam2】完成patch模型推理 ");
-
-		const float w1 = newCoordinate_up.x;
-		const float h1 = newCoordinate_up.y;
-		//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-		if (batch_res.size() == 0 )
-		{
-			spdlog::get("CATL_WCP")->info("Cam2 函数【CatlDetectCam2】patch未检出缺陷 ");
-		}
-		for (size_t j = 0; j < batch_res.size(); j++)
-		{
-
-			DefectData temp_defect_guaijiao;
-			temp_defect_guaijiao.defect_name = classes_guaijiao[(int)batch_res[j].class_id];
-			temp_defect_guaijiao.score = batch_res[j].conf;
-			temp_defect_guaijiao.defect_id = batch_res[j].class_id;
-			cv::Rect r = get_rect(img, batch_res[j].bbox);
-
-			//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-			spdlog::get("CATL_WCP")->info("Cam2 函数【CatlDetectCam2】对patch检出的缺陷进行置信度过滤 ");
-			if (batch_res[j].conf < m_defect_thresh_map[temp_defect_guaijiao.defect_name])
-			{
-				//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-				spdlog::get("CATL_WCP")->info(temp_defect_guaijiao.defect_name + "cam2_patch置信度低于阈值 当前推理置信度为" + std::to_string(batch_res[j].conf));
-				continue;
-
-			}
-
-			//坐标转换
-			temp_defect_guaijiao.x = r.x;
-			temp_defect_guaijiao.y = r.y;
-			temp_defect_guaijiao.x += w1 + part_idx * partWidth;
-			temp_defect_guaijiao.y += h1;
-			temp_defect_guaijiao.h = r.height;
-			temp_defect_guaijiao.w = r.width;
-
-			//////////2025-05-20 增加日志解决中州拐角胶闪退问题//////////
-			spdlog::get("CATL_WCP")->info("cam2_patch模型推理成功,结果为：" + temp_defect_guaijiao.defect_name + " 阈值为：" + std::to_string(temp_defect_guaijiao.score));
-			defect_data.emplace_back(temp_defect_guaijiao);
-
-		}
-
-	}
-	return StatusCode::SUCCESS;
-}
-
-
-
-
-
-
-
-
-
 
 Detection_J::Detection_J() 
 {
@@ -2796,7 +2605,7 @@ Detection_J::~Detection_J()
 	CUDA_CHECK(cudaFree(buffers[inputIndex]));
 	CUDA_CHECK(cudaFree(buffers[outputIndex]));
 	// Destroy the engine
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
+	//context->destroy();
+	//engine->destroy();
+	//runtime->destroy();
 }
