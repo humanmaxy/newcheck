@@ -9,6 +9,9 @@
 #include "NvInfer.h"
 #include "yololayer.h"
 
+// Forward declaration for plugin initialization
+extern "C" bool initLibNvInferPlugins(void* logger, const char* libNamespace);
+
 using namespace nvinfer1;
 
 inline cv::Rect get_rect(cv::Mat& img, float bbox[4]) {
@@ -308,6 +311,13 @@ inline std::vector<std::vector<float>> getAnchors(std::map<std::string, Weights>
 }
 
 inline IPluginV2Layer* addYoLoLayer(INetworkDefinition *network, std::map<std::string, Weights>& weightMap, std::string lname, std::vector<IConvolutionLayer*> dets, bool is_segmentation = false) {
+    // Initialize the plugin library if not already done
+    static bool pluginInitialized = false;
+    if (!pluginInitialized) {
+        initLibNvInferPlugins(nullptr, "");
+        pluginInitialized = true;
+    }
+    
     auto creator = getPluginRegistry()->getPluginCreator("YoloLayer_TRT", "1");
     auto anchors = getAnchors(weightMap, lname);
     PluginField plugin_fields[2];
