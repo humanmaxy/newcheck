@@ -114,6 +114,10 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	IConvolutionLayer* det2 = network->addConvolutionNd(*bottleneck_csp23->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.24.m.2.weight"], weightMap["model.24.m.2.bias"]);
 
 	auto yolo = addYoLoLayer(network, weightMap, "model.24", std::vector<IConvolutionLayer*>{det0, det1, det2});
+	if (yolo == nullptr) {
+		std::cerr << "错误: 无法创建 YOLO 层" << std::endl;
+		return nullptr;
+	}
 	yolo->getOutput(0)->setName(OUTPUT_BLOB_NAME);
 	network->markOutput(*yolo->getOutput(0));
 	// Build engine
@@ -217,6 +221,10 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	IConvolutionLayer* det3 = network->addConvolutionNd(*c3_32->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.33.m.3.weight"], weightMap["model.33.m.3.bias"]);
 
 	auto yolo = addYoLoLayer(network, weightMap, "model.33", std::vector<IConvolutionLayer*>{det0, det1, det2, det3});
+	if (yolo == nullptr) {
+		std::cerr << "错误: 无法创建 YOLO 层" << std::endl;
+		return nullptr;
+	}
 	yolo->getOutput(0)->setName(OUTPUT_BLOB_NAME);
 	network->markOutput(*yolo->getOutput(0));
 
