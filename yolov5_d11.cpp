@@ -82,7 +82,7 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 
 	auto upsample11 = network->addResize(*conv10->getOutput(0));
 	assert(upsample11);
-	upsample11->setResizeMode(InterpolationMode::kNEAREST);
+	upsample11->setResizeMode(ResizeMode::kNEAREST);
 	upsample11->setOutputDimensions(bottleneck_csp6->getOutput(0)->getDimensions());
 
 	ITensor* inputTensors12[] = { upsample11->getOutput(0), bottleneck_csp6->getOutput(0) };
@@ -92,7 +92,7 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 
 	auto upsample15 = network->addResize(*conv14->getOutput(0));
 	assert(upsample15);
-	upsample15->setResizeMode(InterpolationMode::kNEAREST);
+	upsample15->setResizeMode(ResizeMode::kNEAREST);
 	upsample15->setOutputDimensions(bottleneck_csp4->getOutput(0)->getDimensions());
 
 	ITensor* inputTensors16[] = { upsample15->getOutput(0), bottleneck_csp4->getOutput(0) };
@@ -114,15 +114,11 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	IConvolutionLayer* det2 = network->addConvolutionNd(*bottleneck_csp23->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.24.m.2.weight"], weightMap["model.24.m.2.bias"]);
 
 	auto yolo = addYoLoLayer(network, weightMap, "model.24", std::vector<IConvolutionLayer*>{det0, det1, det2});
-	if (yolo == nullptr) {
-		std::cerr << "错误: 无法创建 YOLO 层" << std::endl;
-		return nullptr;
-	}
 	yolo->getOutput(0)->setName(OUTPUT_BLOB_NAME);
 	network->markOutput(*yolo->getOutput(0));
 	// Build engine
-	// Note: setMaxBatchSize is deprecated in TensorRT 10.x
-	config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, 16 * (1 << 20));  // 16MB
+	builder->setMaxBatchSize(maxBatchSize);
+	config->setMaxWorkspaceSize(16 * (1 << 20));  // 16MB
 #if defined(USE_FP16)
 	config->setFlag(BuilderFlag::kFP16);
 #elif defined(USE_INT8)
@@ -138,7 +134,7 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	std::cout << "Build engine successfully!" << std::endl;
 
 	// Don't need the network any more
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
+	network->destroy();
 
 	// Release host memory
 	for (auto& mem : weightMap)
@@ -175,7 +171,7 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	auto conv12 = convBlock(network, weightMap, *sppf11->getOutput(0), get_width(768, gw), 1, 1, 1, "model.12");
 	auto upsample13 = network->addResize(*conv12->getOutput(0));
 	assert(upsample13);
-	upsample13->setResizeMode(InterpolationMode::kNEAREST);
+	upsample13->setResizeMode(ResizeMode::kNEAREST);
 	upsample13->setOutputDimensions(c3_8->getOutput(0)->getDimensions());
 	ITensor* inputTensors14[] = { upsample13->getOutput(0), c3_8->getOutput(0) };
 	auto cat14 = network->addConcatenation(inputTensors14, 2);
@@ -184,7 +180,7 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	auto conv16 = convBlock(network, weightMap, *c3_15->getOutput(0), get_width(512, gw), 1, 1, 1, "model.16");
 	auto upsample17 = network->addResize(*conv16->getOutput(0));
 	assert(upsample17);
-	upsample17->setResizeMode(InterpolationMode::kNEAREST);
+	upsample17->setResizeMode(ResizeMode::kNEAREST);
 	upsample17->setOutputDimensions(c3_6->getOutput(0)->getDimensions());
 	ITensor* inputTensors18[] = { upsample17->getOutput(0), c3_6->getOutput(0) };
 	auto cat18 = network->addConcatenation(inputTensors18, 2);
@@ -193,7 +189,7 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	auto conv20 = convBlock(network, weightMap, *c3_19->getOutput(0), get_width(256, gw), 1, 1, 1, "model.20");
 	auto upsample21 = network->addResize(*conv20->getOutput(0));
 	assert(upsample21);
-	upsample21->setResizeMode(InterpolationMode::kNEAREST);
+	upsample21->setResizeMode(ResizeMode::kNEAREST);
 	upsample21->setOutputDimensions(c3_4->getOutput(0)->getDimensions());
 	ITensor* inputTensors21[] = { upsample21->getOutput(0), c3_4->getOutput(0) };
 	auto cat22 = network->addConcatenation(inputTensors21, 2);
@@ -221,16 +217,12 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	IConvolutionLayer* det3 = network->addConvolutionNd(*c3_32->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.33.m.3.weight"], weightMap["model.33.m.3.bias"]);
 
 	auto yolo = addYoLoLayer(network, weightMap, "model.33", std::vector<IConvolutionLayer*>{det0, det1, det2, det3});
-	if (yolo == nullptr) {
-		std::cerr << "错误: 无法创建 YOLO 层" << std::endl;
-		return nullptr;
-	}
 	yolo->getOutput(0)->setName(OUTPUT_BLOB_NAME);
 	network->markOutput(*yolo->getOutput(0));
 
 	// Build engine
-	// Note: setMaxBatchSize is deprecated in TensorRT 10.x
-	config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, 16 * (1 << 20));  // 16MB
+	builder->setMaxBatchSize(maxBatchSize);
+	config->setMaxWorkspaceSize(16 * (1 << 20));  // 16MB
 #if defined(USE_FP16)
 	config->setFlag(BuilderFlag::kFP16);
 #elif defined(USE_INT8)
@@ -246,7 +238,7 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	std::cout << "Build engine successfully!" << std::endl;
 
 	// Don't need the network any more
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
+	network->destroy();
 
 	// Release host memory
 	for (auto& mem : weightMap)
@@ -276,21 +268,16 @@ void APIToModel(unsigned int maxBatchSize, IHostMemory** modelStream, bool& is_p
 	(*modelStream) = engine->serialize();
 
 	// Close everything down
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
+	engine->destroy();
+	config->destroy();
+	builder->destroy();
 
 }
 
 void doInference(IExecutionContext& context, cudaStream_t& stream, void** buffers, float* input, float* output, int batchSize) {
 	// DMA input batch data to device, infer on the batch asynchronously, and DMA output back to host
 	CUDA_CHECK(cudaMemcpyAsync(buffers[0], input, batchSize * 3 * INPUT_H * INPUT_W * sizeof(float), cudaMemcpyHostToDevice, stream));
-	
-	// In TensorRT 10.x, enqueueV2 is replaced with enqueueV3
-	context.setTensorAddress(INPUT_BLOB_NAME, buffers[0]);
-	context.setTensorAddress(OUTPUT_BLOB_NAME, buffers[1]);
-	context.enqueueV3(stream);
-	
+	context.enqueueV2(buffers, stream, nullptr);
 	CUDA_CHECK(cudaMemcpyAsync(output, buffers[1], batchSize * OUTPUT_SIZE * sizeof(float), cudaMemcpyDeviceToHost, stream));
 	cudaStreamSynchronize(stream);
 }
@@ -548,12 +535,11 @@ bool Detection_J::Initialize(int cameraType, const char* model_path, const char*
 	context = engine->createExecutionContext();
 	assert(context != nullptr);
 	delete[] trtModelStream;
-	// Note: In TensorRT 10.x, binding indices are replaced with tensor names
-	// assert(engine->getNbBindings() == 2);
-	// inputIndex = engine->getBindingIndex(INPUT_BLOB_NAME);
-	// outputIndex = engine->getBindingIndex(OUTPUT_BLOB_NAME);
-	inputIndex = 0;  // Assuming input is at index 0
-	outputIndex = 1; // Assuming output is at index 1
+	assert(engine->getNbBindings() == 2);
+	inputIndex = engine->getBindingIndex(INPUT_BLOB_NAME);
+	outputIndex = engine->getBindingIndex(OUTPUT_BLOB_NAME);
+	assert(inputIndex == 0);
+	assert(outputIndex == 1);
 	// Create GPU buffers on device
 	CUDA_CHECK(cudaMalloc(&buffers[inputIndex], BATCH_SIZE * 3 * INPUT_H * INPUT_W * sizeof(float)));
 	CUDA_CHECK(cudaMalloc(&buffers[outputIndex], BATCH_SIZE * OUTPUT_SIZE * sizeof(float)));
@@ -2299,7 +2285,7 @@ Detection_J::~Detection_J()
 	CUDA_CHECK(cudaFree(buffers[inputIndex]));
 	CUDA_CHECK(cudaFree(buffers[outputIndex]));
 	// Destroy the engine
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
-	// Note: destroy() is deprecated in TensorRT 10.x, memory is managed automatically
+	context->destroy();
+	engine->destroy();
+	runtime->destroy();
 }
