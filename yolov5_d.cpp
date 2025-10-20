@@ -2,6 +2,7 @@
 #include"yololayer.h"
 #include"yolov5_d.h"
 #include "plugin_init.h"  // Add plugin initialization header
+#include "tensorrt_utils.h"  // Add TensorRT utility functions
 #include <corecrt_io.h>
 #include <mutex>
 #include <tchar.h> // 解决debug下的报错
@@ -81,20 +82,38 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	/* ------ yolov5 head ------ */
 	auto conv10 = convBlock(network, weightMap, *spp9->getOutput(0), get_width(512, gw), 1, 1, 1, "model.10");
 
-	auto upsample11 = network->addResize(*conv10->getOutput(0));
-	assert(upsample11);
-	upsample11->setResizeMode(InterpolationMode::kNEAREST);
-	upsample11->setOutputDimensions(bottleneck_csp6->getOutput(0)->getDimensions());
+	// Check conv10 output before creating upsample
+	if (!conv10 || !conv10->getOutput(0)) {
+		std::cerr << "Error: conv10 layer or its output is null" << std::endl;
+		return nullptr;
+	}
+	
+	auto upsample11 = safeAddResize(network, *conv10->getOutput(0), "upsample11");
+	if (!upsample11) {
+		return nullptr;
+	}
+	if (!safeSetResizeMode(upsample11, InterpolationMode::kNEAREST, "upsample11")) {
+		return nullptr;
+	}
+	if (!safeSetOutputDimensions(upsample11, bottleneck_csp6->getOutput(0)->getDimensions(), "upsample11")) {
+		return nullptr;
+	}
 
 	ITensor* inputTensors12[] = { upsample11->getOutput(0), bottleneck_csp6->getOutput(0) };
 	auto cat12 = network->addConcatenation(inputTensors12, 2);
 	auto bottleneck_csp13 = C3(network, weightMap, *cat12->getOutput(0), get_width(1024, gw), get_width(512, gw), get_depth(3, gd), false, 1, 0.5, "model.13");
 	auto conv14 = convBlock(network, weightMap, *bottleneck_csp13->getOutput(0), get_width(256, gw), 1, 1, 1, "model.14");
 
-	auto upsample15 = network->addResize(*conv14->getOutput(0));
-	assert(upsample15);
-	upsample15->setResizeMode(InterpolationMode::kNEAREST);
-	upsample15->setOutputDimensions(bottleneck_csp4->getOutput(0)->getDimensions());
+	auto upsample15 = safeAddResize(network, *conv14->getOutput(0), "upsample15");
+	if (!upsample15) {
+		return nullptr;
+	}
+	if (!safeSetResizeMode(upsample15, InterpolationMode::kNEAREST, "upsample15")) {
+		return nullptr;
+	}
+	if (!safeSetOutputDimensions(upsample15, bottleneck_csp4->getOutput(0)->getDimensions(), "upsample15")) {
+		return nullptr;
+	}
 
 	ITensor* inputTensors16[] = { upsample15->getOutput(0), bottleneck_csp4->getOutput(0) };
 	auto cat16 = network->addConcatenation(inputTensors16, 2);
@@ -172,7 +191,10 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	/* ------ yolov5 head ------ */
 	auto conv12 = convBlock(network, weightMap, *sppf11->getOutput(0), get_width(768, gw), 1, 1, 1, "model.12");
 	auto upsample13 = network->addResize(*conv12->getOutput(0));
-	assert(upsample13);
+	if (!upsample13) {
+		std::cerr << "Error: Failed to create upsample13 layer" << std::endl;
+		return nullptr;
+	}
 	upsample13->setResizeMode(InterpolationMode::kNEAREST);
 	upsample13->setOutputDimensions(c3_8->getOutput(0)->getDimensions());
 	ITensor* inputTensors14[] = { upsample13->getOutput(0), c3_8->getOutput(0) };
@@ -181,7 +203,10 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 
 	auto conv16 = convBlock(network, weightMap, *c3_15->getOutput(0), get_width(512, gw), 1, 1, 1, "model.16");
 	auto upsample17 = network->addResize(*conv16->getOutput(0));
-	assert(upsample17);
+	if (!upsample17) {
+		std::cerr << "Error: Failed to create upsample17 layer" << std::endl;
+		return nullptr;
+	}
 	upsample17->setResizeMode(InterpolationMode::kNEAREST);
 	upsample17->setOutputDimensions(c3_6->getOutput(0)->getDimensions());
 	ITensor* inputTensors18[] = { upsample17->getOutput(0), c3_6->getOutput(0) };
@@ -190,7 +215,10 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 
 	auto conv20 = convBlock(network, weightMap, *c3_19->getOutput(0), get_width(256, gw), 1, 1, 1, "model.20");
 	auto upsample21 = network->addResize(*conv20->getOutput(0));
-	assert(upsample21);
+	if (!upsample21) {
+		std::cerr << "Error: Failed to create upsample21 layer" << std::endl;
+		return nullptr;
+	}
 	upsample21->setResizeMode(InterpolationMode::kNEAREST);
 	upsample21->setOutputDimensions(c3_4->getOutput(0)->getDimensions());
 	ITensor* inputTensors21[] = { upsample21->getOutput(0), c3_4->getOutput(0) };

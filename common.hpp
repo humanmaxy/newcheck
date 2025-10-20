@@ -284,7 +284,10 @@ inline ILayer* Proto(INetworkDefinition* network, std::map<std::string, Weights>
     auto cv1 = convBlock(network, weightMap, input, c_, 3, 1, 1, lname + ".cv1");
 
     auto upsample = network->addResize(*cv1->getOutput(0));
-    assert(upsample);
+    if (!upsample) {
+        std::cerr << "Error: Failed to create upsample layer in Proto function" << std::endl;
+        return nullptr;
+    }
     upsample->setResizeMode(InterpolationMode::kNEAREST);
     const float scales[] = {1, 2, 2};
     upsample->setScales(scales, 3);
