@@ -91,35 +91,85 @@ inline void nms(std::vector<Yolo::Detection>& res, float *output, float conf_thr
 
 // TensorRT weight files have a simple space delimited format:
 // [type] [size] <data x size in hex>
+//inline std::map<std::string, Weights> loadWeights(const std::string file) {
+//    std::cout << "Loading weights: " << file << std::endl;
+//    std::map<std::string, Weights> weightMap;
+//
+//    // Open weights file
+//    std::ifstream input(file);
+//    assert(input.is_open() && "Unable to load weight file. please check if the .wts file path is right!!!!!!");
+//
+//    // Read number of weight blobs
+//    int32_t count;
+//    input >> count;
+//    assert(count > 0 && "Invalid weight map file.");
+//
+//    while (count--) {
+//        Weights wt{ DataType::kFLOAT, nullptr, 0 };
+//        uint32_t size;
+//
+//        // Read name and type of blob
+//        std::string name;
+//        input >> name >> std::dec >> size;
+//        wt.type = DataType::kFLOAT;
+//
+//        // Load blob
+//        uint32_t* val = reinterpret_cast<uint32_t*>(malloc(sizeof(val) * size));
+//        for (uint32_t x = 0, y = size; x < y; ++x) {
+//            input >> std::hex >> val[x];
+//        }
+//        wt.values = val;
+//
+//        wt.count = size;
+//        weightMap[name] = wt;
+//    }
+//
+//    return weightMap;
+//}
 inline std::map<std::string, Weights> loadWeights(const std::string file) {
-    std::cout << "Loading weights: " << file << std::endl;
     std::map<std::string, Weights> weightMap;
-
-    // Open weights file
     std::ifstream input(file);
-    assert(input.is_open() && "Unable to load weight file. please check if the .wts file path is right!!!!!!");
 
-    // Read number of weight blobs
+    if (!input.is_open()) {
+        std::cerr << "Error: Failed to open weights file: " << file << std::endl;
+        return weightMap;
+    }
+
     int32_t count;
     input >> count;
-    assert(count > 0 && "Invalid weight map file.");
+    if (input.fail() || count <= 0) {
+        std::cerr << "Error: Invalid count in weights file." << std::endl;
+        return weightMap;
+    }
 
     while (count--) {
         Weights wt{ DataType::kFLOAT, nullptr, 0 };
+        std::string name;
         uint32_t size;
 
-        // Read name and type of blob
-        std::string name;
-        input >> name >> std::dec >> size;
-        wt.type = DataType::kFLOAT;
-
-        // Load blob
-        uint32_t* val = reinterpret_cast<uint32_t*>(malloc(sizeof(val) * size));
-        for (uint32_t x = 0, y = size; x < y; ++x) {
-            input >> std::hex >> val[x];
+        // 读取名称和大小
+        if (!(input >> name >> std::dec >> size)) {
+            std::cerr << "Error reading blob header." << std::endl;
+            break;
         }
-        wt.values = val;
 
+        // 分配内存
+        uint32_t* val = reinterpret_cast<uint32_t*>(malloc(sizeof(uint32_t) * size));
+        if (!val) {
+            std::cerr << "Memory allocation failed for: " << name << std::endl;
+            break;
+        }
+
+        // 读取十六进制数据
+        for (uint32_t x = 0; x < size; ++x) {
+            if (!(input >> std::hex >> val[x])) {
+                std::cerr << "Error reading weight data for: " << name << " at index " << x << std::endl;
+                free(val);
+                break;
+            }
+        }
+
+        wt.values = val;
         wt.count = size;
         weightMap[name] = wt;
     }
