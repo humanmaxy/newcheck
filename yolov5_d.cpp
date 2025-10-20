@@ -79,11 +79,72 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	auto bottleneck_csp8 = C3(network, weightMap, *conv7->getOutput(0), get_width(1024, gw), get_width(1024, gw), get_depth(3, gd), true, 1, 0.5, "model.8");
 	auto spp9 = SPPF(network, weightMap, *bottleneck_csp8->getOutput(0), get_width(1024, gw), get_width(1024, gw), 5, "model.9");
 	/* ------ yolov5 head ------ */
+	// 检查前置条件
+	if (!network) {
+		std::cerr << "Error: network is null!" << std::endl;
+		return nullptr;
+	}
+	
+	if (!spp9) {
+		std::cerr << "Error: spp9 is null!" << std::endl;
+		return nullptr;
+	}
+	
+	auto spp9_output = spp9->getOutput(0);
+	if (!spp9_output) {
+		std::cerr << "Error: spp9 output tensor is null!" << std::endl;
+		return nullptr;
+	}
+	
+	// 检查权重是否存在
+	std::string weight_key = "model.10.conv.weight";
+	if (weightMap.find(weight_key) == weightMap.end()) {
+		std::cerr << "Error: " << weight_key << " not found in weightMap!" << std::endl;
+		return nullptr;
+	}
+	
 	auto conv10 = convBlock(network, weightMap, *spp9->getOutput(0), get_width(512, gw), 1, 1, 1, "model.10");
+	if (!conv10) {
+		std::cerr << "Error: conv10 convBlock failed to create!" << std::endl;
+		return nullptr;
+	}
 
-	auto upsample11 = network->addResize(*conv10->getOutput(0));
+	auto conv10_output = conv10->getOutput(0);
+	if (!conv10_output) {
+		std::cerr << "Error: conv10 output tensor is null!" << std::endl;
+		return nullptr;
+	}
+	
+	// 打印张量维度信息用于调试
+	auto dims = conv10_output->getDimensions();
+	std::cout << "conv10 output dimensions (" << dims.nbDims << "D): ";
+	for (int i = 0; i < dims.nbDims; i++) {
+		std::cout << dims.d[i] << " ";
+	}
+	std::cout << std::endl;
+	
+	// 检查维度是否合理（应该至少是3D或4D）
+	if (dims.nbDims < 3) {
+		std::cerr << "Error: conv10 output has insufficient dimensions: " << dims.nbDims << std::endl;
+		return nullptr;
+	}
+	
+	// 检查维度值是否有效
+	for (int i = 0; i < dims.nbDims; i++) {
+		if (dims.d[i] <= 0) {
+			std::cerr << "Error: conv10 output has invalid dimension at index " << i << ": " << dims.d[i] << std::endl;
+			return nullptr;
+		}
+	}
+
+	auto upsample11 = network->addResize(*conv10_output);
 	if (!upsample11) {
-		std::cerr << "Error: Failed to create upsample11 resize layer. Input tensor may be invalid." << std::endl;
+		std::cerr << "Error: Failed to create upsample11 resize layer." << std::endl;
+		std::cerr << "Input tensor dimensions: ";
+		for (int i = 0; i < dims.nbDims; i++) {
+			std::cerr << dims.d[i] << " ";
+		}
+		std::cerr << std::endl;
 		return nullptr;
 	}
 	upsample11->setResizeMode(InterpolationMode::kNEAREST);
