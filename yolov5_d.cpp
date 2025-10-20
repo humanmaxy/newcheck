@@ -60,7 +60,19 @@ static int get_depth(int x, float gd) {
 }
 
 ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilderConfig* config, DataType dt, float& gd, float& gw, std::string& wts_name) {
+	// Initialize TensorRT plugins before creating network
+	if (!initializeTensorRTPlugins()) {
+		std::cerr << "Error: Failed to initialize TensorRT plugins!" << std::endl;
+		return nullptr;
+	}
+	
 	INetworkDefinition* network = builder->createNetworkV2(0U);
+	if (!network) {
+		std::cerr << "Error: Failed to create TensorRT network!" << std::endl;
+		return nullptr;
+	}
+	
+	std::cout << "TensorRT network created successfully" << std::endl;
 
 	// Create input tensor of shape {3, INPUT_H, INPUT_W} with name INPUT_BLOB_NAME
 	ITensor* data = network->addInput(INPUT_BLOB_NAME, dt, Dims3{ 3, INPUT_H, INPUT_W });
@@ -79,12 +91,99 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	auto bottleneck_csp8 = C3(network, weightMap, *conv7->getOutput(0), get_width(1024, gw), get_width(1024, gw), get_depth(3, gd), true, 1, 0.5, "model.8");
 	auto spp9 = SPPF(network, weightMap, *bottleneck_csp8->getOutput(0), get_width(1024, gw), get_width(1024, gw), 5, "model.9");
 	/* ------ yolov5 head ------ */
+	// 检查前置条件
+	if (!network) {
+		std::cerr << "Error: network is null!" << std::endl;
+		return nullptr;
+	}
+	
+	if (!spp9) {
+		std::cerr << "Error: spp9 is null!" << std::endl;
+		return nullptr;
+	}
+	
+	auto spp9_output = spp9->getOutput(0);
+	if (!spp9_output) {
+		std::cerr << "Error: spp9 output tensor is null!" << std::endl;
+		return nullptr;
+	}
+	
+	// 检查权重是否存在
+	std::string weight_key = "model.10.conv.weight";
+	if (weightMap.find(weight_key) == weightMap.end()) {
+		std::cerr << "Error: " << weight_key << " not found in weightMap!" << std::endl;
+		return nullptr;
+	}
+	
 	auto conv10 = convBlock(network, weightMap, *spp9->getOutput(0), get_width(512, gw), 1, 1, 1, "model.10");
+	if (!conv10) {
+		std::cerr << "Error: conv10 convBlock failed to create!" << std::endl;
+		return nullptr;
+	}
 
-	auto upsample11 = network->addResize(*conv10->getOutput(0));
-	assert(upsample11);
+	auto conv10_output = conv10->getOutput(0);
+	if (!conv10_output) {
+		std::cerr << "Error: conv10 output tensor is null!" << std::endl;
+		return nullptr;
+	}
+	
+	// 打印张量维度信息用于调试
+	auto dims = conv10_output->getDimensions();
+	std::cout << "conv10 output dimensions (" << dims.nbDims << "D): ";
+	for (int i = 0; i < dims.nbDims; i++) {
+		std::cout << dims.d[i] << " ";
+	}
+	std::cout << std::endl;
+	
+	// 检查维度是否合理（应该至少是3D或4D）
+	if (dims.nbDims < 3) {
+		std::cerr << "Error: conv10 output has insufficient dimensions: " << dims.nbDims << std::endl;
+		return nullptr;
+	}
+	
+	// 检查维度值是否有效
+	for (int i = 0; i < dims.nbDims; i++) {
+		if (dims.d[i] <= 0) {
+			std::cerr << "Error: conv10 output has invalid dimension at index " << i << ": " << dims.d[i] << std::endl;
+			return nullptr;
+		}
+	}
+
+	auto upsample11 = network->addResize(*conv10_output);
+	if (!upsample11) {
+		std::cerr << "Error: Failed to create upsample11 resize layer." << std::endl;
+		std::cerr << "Input tensor dimensions: ";
+		for (int i = 0; i < dims.nbDims; i++) {
+			std::cerr << dims.d[i] << " ";
+		}
+		std::cerr << std::endl;
+		return nullptr;
+	}
 	upsample11->setResizeMode(InterpolationMode::kNEAREST);
-	upsample11->setOutputDimensions(bottleneck_csp6->getOutput(0)->getDimensions());
+	
+	// Use scales instead of setOutputDimensions for more reliable upsampling
+	// Calculate scale factors based on input and target dimensions
+	auto input_dims = conv10->getOutput(0)->getDimensions();
+	auto target_dims = bottleneck_csp6->getOutput(0)->getDimensions();
+	
+	if (input_dims.nbDims >= 2 && target_dims.nbDims >= 2) {
+		float scale_h = static_cast<float>(target_dims.d[input_dims.nbDims-2]) / static_cast<float>(input_dims.d[input_dims.nbDims-2]);
+		float scale_w = static_cast<float>(target_dims.d[input_dims.nbDims-1]) / static_cast<float>(input_dims.d[input_dims.nbDims-1]);
+		
+		if (input_dims.nbDims == 3) {
+			const float scales[] = {1.0f, scale_h, scale_w};
+			upsample11->setScales(scales, 3);
+		} else if (input_dims.nbDims == 4) {
+			const float scales[] = {1.0f, 1.0f, scale_h, scale_w};
+			upsample11->setScales(scales, 4);
+		} else {
+			// Fallback to setOutputDimensions if dimensions are unexpected
+			upsample11->setOutputDimensions(target_dims);
+		}
+	} else {
+		// Fallback to setOutputDimensions
+		upsample11->setOutputDimensions(target_dims);
+	}
 
 	ITensor* inputTensors12[] = { upsample11->getOutput(0), bottleneck_csp6->getOutput(0) };
 	auto cat12 = network->addConcatenation(inputTensors12, 2);
@@ -92,9 +191,34 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	auto conv14 = convBlock(network, weightMap, *bottleneck_csp13->getOutput(0), get_width(256, gw), 1, 1, 1, "model.14");
 
 	auto upsample15 = network->addResize(*conv14->getOutput(0));
-	assert(upsample15);
+	if (!upsample15) {
+		std::cerr << "Error: Failed to create upsample15 resize layer. Input tensor may be invalid." << std::endl;
+		return nullptr;
+	}
 	upsample15->setResizeMode(InterpolationMode::kNEAREST);
-	upsample15->setOutputDimensions(bottleneck_csp4->getOutput(0)->getDimensions());
+	
+	// Use scales instead of setOutputDimensions for more reliable upsampling
+	auto input_dims = conv14->getOutput(0)->getDimensions();
+	auto target_dims = bottleneck_csp4->getOutput(0)->getDimensions();
+	
+	if (input_dims.nbDims >= 2 && target_dims.nbDims >= 2) {
+		float scale_h = static_cast<float>(target_dims.d[input_dims.nbDims-2]) / static_cast<float>(input_dims.d[input_dims.nbDims-2]);
+		float scale_w = static_cast<float>(target_dims.d[input_dims.nbDims-1]) / static_cast<float>(input_dims.d[input_dims.nbDims-1]);
+		
+		if (input_dims.nbDims == 3) {
+			const float scales[] = {1.0f, scale_h, scale_w};
+			upsample15->setScales(scales, 3);
+		} else if (input_dims.nbDims == 4) {
+			const float scales[] = {1.0f, 1.0f, scale_h, scale_w};
+			upsample15->setScales(scales, 4);
+		} else {
+			// Fallback to setOutputDimensions if dimensions are unexpected
+			upsample15->setOutputDimensions(target_dims);
+		}
+	} else {
+		// Fallback to setOutputDimensions
+		upsample15->setOutputDimensions(target_dims);
+	}
 
 	ITensor* inputTensors16[] = { upsample15->getOutput(0), bottleneck_csp4->getOutput(0) };
 	auto cat16 = network->addConcatenation(inputTensors16, 2);
@@ -148,6 +272,12 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 }
 
 ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuilderConfig* config, DataType dt, float& gd, float& gw, std::string& wts_name) {
+	// Initialize TensorRT plugins before creating network
+	if (!initializeTensorRTPlugins()) {
+		std::cerr << "Error: Failed to initialize TensorRT plugins!" << std::endl;
+		return nullptr;
+	}
+	
 	INetworkDefinition* network = builder->createNetworkV2(0U);
 	// Create input tensor of shape {3, INPUT_H, INPUT_W} with name INPUT_BLOB_NAME
 	ITensor* data = network->addInput(INPUT_BLOB_NAME, dt, Dims3{ 3, INPUT_H, INPUT_W });
@@ -172,27 +302,102 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	/* ------ yolov5 head ------ */
 	auto conv12 = convBlock(network, weightMap, *sppf11->getOutput(0), get_width(768, gw), 1, 1, 1, "model.12");
 	auto upsample13 = network->addResize(*conv12->getOutput(0));
-	assert(upsample13);
+	if (!upsample13) {
+		std::cerr << "Error: Failed to create upsample13 resize layer. Input tensor may be invalid." << std::endl;
+		return nullptr;
+	}
 	upsample13->setResizeMode(InterpolationMode::kNEAREST);
-	upsample13->setOutputDimensions(c3_8->getOutput(0)->getDimensions());
+	
+	// Use scales instead of setOutputDimensions for more reliable upsampling
+	auto input_dims = conv12->getOutput(0)->getDimensions();
+	auto target_dims = c3_8->getOutput(0)->getDimensions();
+	
+	if (input_dims.nbDims >= 2 && target_dims.nbDims >= 2) {
+		float scale_h = static_cast<float>(target_dims.d[input_dims.nbDims-2]) / static_cast<float>(input_dims.d[input_dims.nbDims-2]);
+		float scale_w = static_cast<float>(target_dims.d[input_dims.nbDims-1]) / static_cast<float>(input_dims.d[input_dims.nbDims-1]);
+		
+		if (input_dims.nbDims == 3) {
+			const float scales[] = {1.0f, scale_h, scale_w};
+			upsample13->setScales(scales, 3);
+		} else if (input_dims.nbDims == 4) {
+			const float scales[] = {1.0f, 1.0f, scale_h, scale_w};
+			upsample13->setScales(scales, 4);
+		} else {
+			// Fallback to setOutputDimensions if dimensions are unexpected
+			upsample13->setOutputDimensions(target_dims);
+		}
+	} else {
+		// Fallback to setOutputDimensions
+		upsample13->setOutputDimensions(target_dims);
+	}
 	ITensor* inputTensors14[] = { upsample13->getOutput(0), c3_8->getOutput(0) };
 	auto cat14 = network->addConcatenation(inputTensors14, 2);
 	auto c3_15 = C3(network, weightMap, *cat14->getOutput(0), get_width(1536, gw), get_width(768, gw), get_depth(3, gd), false, 1, 0.5, "model.15");
 
 	auto conv16 = convBlock(network, weightMap, *c3_15->getOutput(0), get_width(512, gw), 1, 1, 1, "model.16");
 	auto upsample17 = network->addResize(*conv16->getOutput(0));
-	assert(upsample17);
+	if (!upsample17) {
+		std::cerr << "Error: Failed to create upsample17 resize layer. Input tensor may be invalid." << std::endl;
+		return nullptr;
+	}
 	upsample17->setResizeMode(InterpolationMode::kNEAREST);
-	upsample17->setOutputDimensions(c3_6->getOutput(0)->getDimensions());
+	
+	// Use scales instead of setOutputDimensions for more reliable upsampling
+	auto input_dims = conv16->getOutput(0)->getDimensions();
+	auto target_dims = c3_6->getOutput(0)->getDimensions();
+	
+	if (input_dims.nbDims >= 2 && target_dims.nbDims >= 2) {
+		float scale_h = static_cast<float>(target_dims.d[input_dims.nbDims-2]) / static_cast<float>(input_dims.d[input_dims.nbDims-2]);
+		float scale_w = static_cast<float>(target_dims.d[input_dims.nbDims-1]) / static_cast<float>(input_dims.d[input_dims.nbDims-1]);
+		
+		if (input_dims.nbDims == 3) {
+			const float scales[] = {1.0f, scale_h, scale_w};
+			upsample17->setScales(scales, 3);
+		} else if (input_dims.nbDims == 4) {
+			const float scales[] = {1.0f, 1.0f, scale_h, scale_w};
+			upsample17->setScales(scales, 4);
+		} else {
+			// Fallback to setOutputDimensions if dimensions are unexpected
+			upsample17->setOutputDimensions(target_dims);
+		}
+	} else {
+		// Fallback to setOutputDimensions
+		upsample17->setOutputDimensions(target_dims);
+	}
 	ITensor* inputTensors18[] = { upsample17->getOutput(0), c3_6->getOutput(0) };
 	auto cat18 = network->addConcatenation(inputTensors18, 2);
 	auto c3_19 = C3(network, weightMap, *cat18->getOutput(0), get_width(1024, gw), get_width(512, gw), get_depth(3, gd), false, 1, 0.5, "model.19");
 
 	auto conv20 = convBlock(network, weightMap, *c3_19->getOutput(0), get_width(256, gw), 1, 1, 1, "model.20");
 	auto upsample21 = network->addResize(*conv20->getOutput(0));
-	assert(upsample21);
+	if (!upsample21) {
+		std::cerr << "Error: Failed to create upsample21 resize layer. Input tensor may be invalid." << std::endl;
+		return nullptr;
+	}
 	upsample21->setResizeMode(InterpolationMode::kNEAREST);
-	upsample21->setOutputDimensions(c3_4->getOutput(0)->getDimensions());
+	
+	// Use scales instead of setOutputDimensions for more reliable upsampling
+	auto input_dims = conv20->getOutput(0)->getDimensions();
+	auto target_dims = c3_4->getOutput(0)->getDimensions();
+	
+	if (input_dims.nbDims >= 2 && target_dims.nbDims >= 2) {
+		float scale_h = static_cast<float>(target_dims.d[input_dims.nbDims-2]) / static_cast<float>(input_dims.d[input_dims.nbDims-2]);
+		float scale_w = static_cast<float>(target_dims.d[input_dims.nbDims-1]) / static_cast<float>(input_dims.d[input_dims.nbDims-1]);
+		
+		if (input_dims.nbDims == 3) {
+			const float scales[] = {1.0f, scale_h, scale_w};
+			upsample21->setScales(scales, 3);
+		} else if (input_dims.nbDims == 4) {
+			const float scales[] = {1.0f, 1.0f, scale_h, scale_w};
+			upsample21->setScales(scales, 4);
+		} else {
+			// Fallback to setOutputDimensions if dimensions are unexpected
+			upsample21->setOutputDimensions(target_dims);
+		}
+	} else {
+		// Fallback to setOutputDimensions
+		upsample21->setOutputDimensions(target_dims);
+	}
 	ITensor* inputTensors21[] = { upsample21->getOutput(0), c3_4->getOutput(0) };
 	auto cat22 = network->addConcatenation(inputTensors21, 2);
 	auto c3_23 = C3(network, weightMap, *cat22->getOutput(0), get_width(512, gw), get_width(256, gw), get_depth(3, gd), false, 1, 0.5, "model.23");
