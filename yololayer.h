@@ -102,7 +102,7 @@ namespace nvinfer1
         void** mAnchor;
     };
 
-    class API YoloPluginCreator : public IPluginCreator
+    class YoloPluginCreator : public IPluginCreator
     {
     public:
         YoloPluginCreator();
@@ -134,7 +134,11 @@ namespace nvinfer1
         static PluginFieldCollection mFC;
         static std::vector<PluginField> mPluginAttributes;
     };
-    REGISTER_TENSORRT_PLUGIN(YoloPluginCreator);
+    // Plugin registration is handled in yololayer.cpp to avoid access violations
+    // Use initLibNvInferPlugins() function to register the plugin safely
 };
+
+// Function declaration for safe plugin initialization
+extern "C" bool initLibNvInferPlugins(void* logger, const char* libNamespace);
 
 #endif  // _YOLO_LAYER_H

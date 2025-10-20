@@ -1,6 +1,7 @@
 #include "pch.h"
 #include"yololayer.h"
 #include"yolov5_d.h"
+#include "plugin_init.h"  // Add plugin initialization header
 #include <corecrt_io.h>
 #include <mutex>
 #include <tchar.h> // 解决debug下的报错
@@ -81,7 +82,10 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	auto conv10 = convBlock(network, weightMap, *spp9->getOutput(0), get_width(512, gw), 1, 1, 1, "model.10");
 
 	auto upsample11 = network->addResize(*conv10->getOutput(0));
-	assert(upsample11);
+	if (!upsample11) {
+		std::cerr << "Error: Failed to create upsample11 layer" << std::endl;
+		return nullptr;
+	}
 	upsample11->setResizeMode(ResizeMode::kNEAREST);
 	upsample11->setOutputDimensions(bottleneck_csp6->getOutput(0)->getDimensions());
 
@@ -91,7 +95,10 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 	auto conv14 = convBlock(network, weightMap, *bottleneck_csp13->getOutput(0), get_width(256, gw), 1, 1, 1, "model.14");
 
 	auto upsample15 = network->addResize(*conv14->getOutput(0));
-	assert(upsample15);
+	if (!upsample15) {
+		std::cerr << "Error: Failed to create upsample15 layer" << std::endl;
+		return nullptr;
+	}
 	upsample15->setResizeMode(ResizeMode::kNEAREST);
 	upsample15->setOutputDimensions(bottleneck_csp4->getOutput(0)->getDimensions());
 
@@ -170,7 +177,10 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 	/* ------ yolov5 head ------ */
 	auto conv12 = convBlock(network, weightMap, *sppf11->getOutput(0), get_width(768, gw), 1, 1, 1, "model.12");
 	auto upsample13 = network->addResize(*conv12->getOutput(0));
-	assert(upsample13);
+	if (!upsample13) {
+		std::cerr << "Error: Failed to create upsample13 layer" << std::endl;
+		return nullptr;
+	}
 	upsample13->setResizeMode(ResizeMode::kNEAREST);
 	upsample13->setOutputDimensions(c3_8->getOutput(0)->getDimensions());
 	ITensor* inputTensors14[] = { upsample13->getOutput(0), c3_8->getOutput(0) };
@@ -179,7 +189,10 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 
 	auto conv16 = convBlock(network, weightMap, *c3_15->getOutput(0), get_width(512, gw), 1, 1, 1, "model.16");
 	auto upsample17 = network->addResize(*conv16->getOutput(0));
-	assert(upsample17);
+	if (!upsample17) {
+		std::cerr << "Error: Failed to create upsample17 layer" << std::endl;
+		return nullptr;
+	}
 	upsample17->setResizeMode(ResizeMode::kNEAREST);
 	upsample17->setOutputDimensions(c3_6->getOutput(0)->getDimensions());
 	ITensor* inputTensors18[] = { upsample17->getOutput(0), c3_6->getOutput(0) };
@@ -188,7 +201,10 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
 
 	auto conv20 = convBlock(network, weightMap, *c3_19->getOutput(0), get_width(256, gw), 1, 1, 1, "model.20");
 	auto upsample21 = network->addResize(*conv20->getOutput(0));
-	assert(upsample21);
+	if (!upsample21) {
+		std::cerr << "Error: Failed to create upsample21 layer" << std::endl;
+		return nullptr;
+	}
 	upsample21->setResizeMode(ResizeMode::kNEAREST);
 	upsample21->setOutputDimensions(c3_4->getOutput(0)->getDimensions());
 	ITensor* inputTensors21[] = { upsample21->getOutput(0), c3_4->getOutput(0) };
@@ -528,6 +544,12 @@ bool Detection_J::Initialize(int cameraType, const char* model_path, const char*
 
 
 	// prepare input data ------NCHW---------------------
+	// Initialize YoloLayer plugin before creating runtime
+	if (!initializeYoloPlugin()) {
+		spdlog::get("CATL_WCP")->error("Failed to initialize YoloLayer plugin!");
+		return false;
+	}
+	
 	runtime = createInferRuntime(gLogger);
 	assert(runtime != nullptr);
 	engine = runtime->deserializeCudaEngine(trtModelStream, size);
