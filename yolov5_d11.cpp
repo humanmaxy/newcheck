@@ -1,6 +1,7 @@
 #include "pch.h"
 #include"yololayer.h"
 #include"yolov5_d.h"
+#include "plugin_init.h" 
 #include <corecrt_io.h>
 #include <mutex>
 #include <tchar.h> // 解决debug下的报错
