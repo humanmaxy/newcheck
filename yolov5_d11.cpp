@@ -60,7 +60,19 @@ static int get_depth(int x, float gd) {
 }
 
 ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilderConfig* config, DataType dt, float& gd, float& gw, std::string& wts_name) {
+	// Initialize TensorRT plugins before creating network
+	if (!initializeTensorRTPlugins()) {
+		std::cerr << "Error: Failed to initialize TensorRT plugins!" << std::endl;
+		return nullptr;
+	}
+	
 	INetworkDefinition* network = builder->createNetworkV2(0U);
+	if (!network) {
+		std::cerr << "Error: Failed to create TensorRT network!" << std::endl;
+		return nullptr;
+	}
+	
+	std::cout << "TensorRT network created successfully" << std::endl;
 
 	// Create input tensor of shape {3, INPUT_H, INPUT_W} with name INPUT_BLOB_NAME
 	ITensor* data = network->addInput(INPUT_BLOB_NAME, dt, Dims3{ 3, INPUT_H, INPUT_W });
@@ -258,6 +270,12 @@ ICudaEngine* build_engine(unsigned int maxBatchSize, IBuilder* builder, IBuilder
 }
 
 ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuilderConfig* config, DataType dt, float& gd, float& gw, std::string& wts_name) {
+	// Initialize TensorRT plugins before creating network
+	if (!initializeTensorRTPlugins()) {
+		std::cerr << "Error: Failed to initialize TensorRT plugins!" << std::endl;
+		return nullptr;
+	}
+	
 	INetworkDefinition* network = builder->createNetworkV2(0U);
 	// Create input tensor of shape {3, INPUT_H, INPUT_W} with name INPUT_BLOB_NAME
 	ITensor* data = network->addInput(INPUT_BLOB_NAME, dt, Dims3{ 3, INPUT_H, INPUT_W });
