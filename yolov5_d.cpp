@@ -1,6 +1,7 @@
 #include "pch.h"
 #include"yololayer.h"
 #include"yolov5_d.h"
+#include "plugin_init.h" 
 #include <corecrt_io.h>
 #include <mutex>
 #include <tchar.h> // 解决debug下的报错
@@ -450,7 +451,11 @@ void calculate_contrast(const cv::Mat& defect_img, int thresh, int& defect_area,
 //	CUDA_CHECK(cudaMemcpyAsync(output, buffers[1], batchSize * OUTPUT_SIZE * sizeof(float), cudaMemcpyDeviceToHost, stream));
 //	cudaStreamSynchronize(stream);
 //}
-
+bool fileExists(const std::string& fileName)
+{
+	struct stat buffer;
+	return (stat(fileName.c_str(), &buffer) == 0);
+}
 bool Detection_J::Initialize(int cameraType, const char* model_path, const char* config_path,  int num)
 {
 	camType = cameraType;
@@ -467,6 +472,25 @@ bool Detection_J::Initialize(int cameraType, const char* model_path, const char*
 
 	//初始化GPU引擎
 	cudaSetDevice(DEVICE);
+	std::string temp = model_path;
+	//std::size_t found = temp.find("engine");
+	//std::size_t found = 
+	//std::string wts_name = "E:/WCP_JUANRAO/x64/Debug/AI_Config/model/wcp_det_jiaozhi.wts";
+	std::string wts_name =  "E:/wcp_det.wts";;
+	bool is_p6 = false;
+	if (true)
+	{
+		IHostMemory* modelStream{ nullptr };
+		APIToModel(BATCH_SIZE, &modelStream, is_p6, gd, gw, wts_name);
+		assert(modelStream != nullptr);
+		std::ofstream p(model_path, std::ios::binary);
+		if (!p) {
+			std::cerr << "could not open plan output file" << std::endl;
+			return -1;
+		}
+		p.write(reinterpret_cast<const char*>(modelStream->data()), modelStream->size());
+
+	}
 	std::ifstream file(model_path, std::ios::binary);
 	if (!file.good()) {
 		spdlog::get("CATL_WCP")->info("read mode file error!");
@@ -533,6 +557,10 @@ bool Detection_J::Initialize(int cameraType, const char* model_path, const char*
 
 
 	// prepare input data ------NCHW---------------------
+	if (!initializeYoloPlugin()) {
+		spdlog::get("CATL_WCP")->error("Failed to initialize YoloLayer plugin!");
+		return false;
+	}
 	runtime = createInferRuntime(gLogger);
 	assert(runtime != nullptr);
 	engine = runtime->deserializeCudaEngine(trtModelStream, size);
