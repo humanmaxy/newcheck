@@ -53,7 +53,7 @@ namespace nvinfer1
 
         virtual size_t getWorkspaceSize(int maxBatchSize) const TRT_NOEXCEPT override { return 0; }
 
-        virtual int enqueue(int batchSize, const void* const* inputs, void*TRT_CONST_ENQUEUE* outputs, void* workspace, cudaStream_t stream) TRT_NOEXCEPT override;
+        virtual int enqueue(int batchSize, const void* const* inputs, void* TRT_CONST_ENQUEUE* outputs, void* workspace, cudaStream_t stream) TRT_NOEXCEPT override;
 
         virtual size_t getSerializationSize() const TRT_NOEXCEPT override;
 
@@ -89,7 +89,7 @@ namespace nvinfer1
         void detachFromContext() TRT_NOEXCEPT override;
 
     private:
-        void forwardGpu(const float* const* inputs, float *output, cudaStream_t stream, int batchSize = 1);
+        void forwardGpu(const float* const* inputs, float* output, cudaStream_t stream, int batchSize = 1);
         int mThreadCount = 256;
         const char* mPluginNamespace;
         int mKernelCount;
@@ -102,7 +102,7 @@ namespace nvinfer1
         void** mAnchor;
     };
 
-    class API YoloPluginCreator : public IPluginCreator
+    class YoloPluginCreator : public IPluginCreator
     {
     public:
         YoloPluginCreator();
@@ -134,7 +134,11 @@ namespace nvinfer1
         static PluginFieldCollection mFC;
         static std::vector<PluginField> mPluginAttributes;
     };
-    REGISTER_TENSORRT_PLUGIN(YoloPluginCreator);
+    // Plugin registration is handled in yololayer.cpp to avoid access violations
+    // Use initLibNvInferPlugins() function to register the plugin safely
 };
+
+// Function declaration for safe plugin initialization
+extern "C" bool initLibNvInferPlugins(void* logger, const char* libNamespace);
 
 #endif  // _YOLO_LAYER_H
